@@ -19,23 +19,34 @@ A production-grade data lakehouse pipeline demonstrating modern ELT/ETL architec
 
 ## Table of Contents
 
-1. [Architecture Overview](#1-architecture-overview)
-2. [Data Flow Diagram](#2-data-flow-diagram)
-3. [Infrastructure Components](#3-infrastructure-components)
-4. [Raw Data Schema](#4-raw-data-schema)
-   - [4.1 PostgreSQL Raw Tables](#41-postgresql-raw-tables)
-   - [4.2 Kaggle CSV Schema](#42-kaggle-csv-schema)
-   - [4.3 Data Mapping](#43-data-mapping)
-5. [Project Structure](#5-project-structure)
-6. [Test Pyramid](#6-test-pyramid)
-7. [Quick Start](#7-quick-start)
-8. [Database Connections](#8-database-connections)
-9. [Running Tests](#9-running-tests)
-10. [SQL Examples](#10-sql-examples)
-11. [Environment Variables](#11-environment-variables)
-12. [Troubleshooting](#12-troubleshooting)
-13. [License](#13-license)
-14. [Author](#14-author)
+1. [Technologies Explained](#1-technologies-explained)
+   - [1.1 PostgreSQL](#11-postgresql)
+   - [1.2 MinIO](#12-minio)
+   - [1.3 ClickHouse](#13-clickhouse)
+   - [1.4 DBT](#14-dbt-data-build-tool)
+   - [1.5 DLT](#15-dlt-data-load-tool)
+   - [1.6 Python](#16-python)
+   - [1.7 Go](#17-go)
+   - [1.8 Docker](#18-docker)
+2. [Architecture Overview](#2-architecture-overview)
+3. [Data Flow Diagram](#3-data-flow-diagram)
+4. [Infrastructure Components](#4-infrastructure-components)
+5. [Raw Data Schema](#5-raw-data-schema)
+   - [5.1 PostgreSQL Raw Tables](#51-postgresql-raw-tables)
+   - [5.2 Kaggle CSV Schema](#52-kaggle-csv-schema)
+   - [5.3 Data Mapping](#53-data-mapping-postgresql--kaggle)
+   - [5.4 Silver Layer Schema](#54-silver-layer-schema)
+   - [5.5 Gold Layer Schema](#55-gold-layer-schema)
+6. [Project Structure](#6-project-structure)
+7. [Test Pyramid](#7-test-pyramid)
+8. [Quick Start](#8-quick-start)
+9. [Database Connections](#9-database-connections)
+10. [Running Tests](#10-running-tests)
+11. [SQL Examples](#11-sql-examples)
+12. [Environment Variables](#12-environment-variables)
+13. [Troubleshooting](#13-troubleshooting)
+14. [License](#14-license)
+15. [Author](#15-author)
 
 ---
 
@@ -46,7 +57,275 @@ Eng. Matías J. Magni | CEO @ BugMentor
 
 ---
 
-## 1. Architecture Overview
+## 1. Technologies Explained
+
+This section explains all technologies used in the pipeline, designed for both junior and senior engineers.
+
+### 1.1. PostgreSQL
+
+**What is it?**  
+PostgreSQL is a powerful, open-source **relational database system** known for reliability and feature richness.
+
+**Why use it here?**  
+PostgreSQL serves as the **raw source of truth** for customer and claims data. It's ideal for transactional data with:
+- ACID compliance
+- Complex queries with JOINs
+- JSON support
+- Strong typing
+
+**Key Concepts for Juniors:**
+- **Table**: Like a spreadsheet with rows (records) and columns (fields)
+- **Primary Key**: Unique identifier for each row
+- **Foreign Key**: Links two tables together
+- **SQL**: Language to query/manipulate data
+
+**Key Concepts for Seniors:**
+- **MVCC**: Multi-Version Concurrency Control for concurrent reads/writes
+- **Indexing**: B-tree indexes for fast lookups
+- **Partitioning**: Split large tables for performance
+- **Replication**: Master-slave for high availability
+
+**Connection:**
+```bash
+# Connect via CLI
+docker exec -it insurance_postgres psql -U insurance_user -d insurance_db
+
+# Example query
+SELECT COUNT(*) FROM customers;
+```
+
+---
+
+### 1.2. MinIO
+
+**What is it?**  
+MinIO is an **S3-compatible object storage** (Amazon Simple Storage Service). Think of it as a file system that stores files (called "objects") in "buckets".
+
+**Why use it here?**  
+MinIO provides the **Data Lake** layer:
+- **Cheap storage** for massive amounts of data
+- **Parquet format** for columnar storage (efficient for analytics)
+- **S3 compatibility** - industry standard API
+
+**Key Concepts for Juniors:**
+- **Bucket**: Like a top-level folder (e.g., "insurance-data")
+- **Object**: A file with metadata (e.g., `customers/customers_001.parquet`)
+- **Parquet**: Columnar file format - stores data by columns, not rows
+- **Raw Layer**: Original data as extracted from PostgreSQL
+- **Silver Layer**: Cleaned/transformed data
+
+**Key Concepts for Seniors:**
+- **Object Storage vs Block/File**: Objects are flat (no hierarchy), addressed by key
+- **Columnar vs Row-based**: Parquet reads only needed columns (faster for analytics)
+- **Compression**: Parquet encodes data efficiently (up to 70% smaller)
+- **S3 API**: RESTful API for CRUD operations on objects
+
+**Querying MinIO Data:**
+
+```python
+# Using Python with pyarrow and s3fs
+import pyarrow.parquet as pq
+import s3fs
+
+# Connect to MinIO
+s3 = s3fs.S3FileSystem(
+    endpoint_url="http://localhost:9900",
+    key="minioadmin",
+    secret="minioadmin"
+)
+
+# Read Parquet file
+table = pq.read_table("insurance-data/silver/customers/", filesystem=s3)
+df = table.to_pandas()
+
+# Or read specific file
+table = pq.read_table("s3://insurance-data/raw/customers/customers_001.parquet", filesystem=s3)
+```
+
+```bash
+# Using AWS CLI with MinIO
+aws --endpoint-url=http://localhost:9900 s3 ls s3://insurance-data/
+
+# Download a file
+aws --endpoint-url=http://localhost:9900 s3 cp s3://insurance-data/raw/customers/customers_001.parquet ./customers.parquet
+
+# List files in a folder
+aws --endpoint-url=http://localhost:9900 s3 ls s3://insurance-data/silver/customers/
+```
+
+```python
+# Using pandas directly with PyArrow
+import pandas as pd
+import pyarrow as pa
+import pyarrow.fs as fs
+
+# Create MinIO filesystem
+minio_fs = fs.SubTreeFileSystem("insurance-data", fs.LocalFileSystem())
+
+# Read Parquet
+table = pa.parquet.read_table("silver/customers/", filesystem=minio_fs)
+df = table.to_pandas()
+```
+
+---
+
+### 1.3. ClickHouse
+
+**What is it?**  
+ClickHouse is a **column-oriented database management system** (DBMS) optimized for **OLAP** (Online Analytical Processing). It's incredibly fast for aggregations.
+
+**Why use it here?**  
+ClickHouse provides the **Analytics layer**:
+- **Massively parallel processing** across many cores
+- **Columnar storage** for analytical queries
+- **Compression** reduces storage by 5-10x
+- **SQL interface** familiar to all developers
+
+**Key Concepts for Juniors:**
+- **Table**: Collection of data (like PostgreSQL)
+- **Materialized View**: Pre-computed query result (cached)
+- **Partitioning**: Split data by key (e.g., by date) for speed
+- **No schema prefix**: Tables are accessed directly (e.g., `SELECT * FROM customers`)
+
+**Key Concepts for Seniors:**
+- **Column-oriented**: Data stored by column, not row - ideal for aggregations
+- **Vectorized execution**: Processes batches of rows (SIMD)
+- **MergeTree**: ClickHouse's primary table engine (similar to Log Structured Merge trees)
+- **Distributed processing**: Queries run in parallel across nodes
+
+**Querying ClickHouse:**
+
+```bash
+# Via Docker
+docker exec -it insurance_clickhouse clickhouse-client
+
+# Or via HTTP
+curl "http://localhost:8123/?query=SELECT+COUNT(*)+FROM+customers"
+```
+
+```sql
+-- Example queries
+SELECT COUNT(*) FROM customers;
+SELECT claim_status, COUNT(*) FROM claims GROUP BY claim_status;
+SELECT * FROM claims_by_status;
+```
+
+---
+
+### 1.4. DBT (Data Build Tool)
+
+**What is it?**  
+DBT is a **transformation tool** that lets you transform data in your warehouse using SQL. It follows the **ELT** pattern (Extract, Load, Transform).
+
+**Why use it here?**  
+DBT handles the **Silver → Gold** transformation:
+- **Version control** for SQL models
+- **Jinja templating** for reusable SQL
+- **Testing** built-in
+- **Documentation** auto-generated
+
+**Key Concepts for Juniors:**
+- **Model**: A SELECT statement that creates a table/view
+- **Materialization**: How to store the model (table, view, incremental)
+- **Source**: Reference to raw data (MinIO Parquet files)
+- **Ref**: Reference to another model
+
+**Key Concepts for Seniors:**
+- **Jinja**: Python-like templating in SQL for DRY code
+- **Macro**: Reusable SQL fragments
+- **Packages**: Pre-built dbt transformations
+- **Hooks**: Run SQL before/after models
+- **Snapshots**: Type 2 slowly changing dimensions
+
+**DBT Commands:**
+```bash
+# Run all models
+dbt run
+
+# Run specific model
+dbt run --select silver_customers
+
+# Test models
+dbt test
+
+# Generate documentation
+dbt docs generate
+dbt docs serve
+```
+
+---
+
+### 1.5. DLT (Data Load Tool)
+
+**What is it?**  
+DLT is an open-source **data loading tool** that simplifies moving data from sources to destinations.
+
+**Why use it here?**  
+DLT handles the **PostgreSQL → MinIO** extraction:
+- **Auto-schema detection**: Infers schema from source
+- **Incremental loads**: Only loads new data
+- **Pipeline as code**: Version controlled pipelines
+
+**Key Concepts for Juniors:**
+- **Pipeline**: Code that moves data from A to B
+- **Source**: Where data comes from (PostgreSQL)
+- **Destination**: Where data goes (MinIO/S3)
+
+---
+
+### 1.6. Python
+
+**Why use it here?**  
+Python is the **glue language** that orchestrates everything:
+- DLT pipelines
+- Data processing (pandas, pyarrow)
+- Scripting and automation
+
+**Key Libraries:**
+- `psycopg2`: PostgreSQL driver
+- `boto3`: AWS/MinIO SDK
+- `pandas`: Data manipulation
+- `pyarrow`: Parquet handling
+
+---
+
+### 1.7. Go
+
+**Why use it here?**  
+Go generates **synthetic test data** for PostgreSQL:
+- Fast execution
+- Single binary distribution
+- Great for data generation scripts
+
+---
+
+### 1.8. Docker
+
+**Why use it here?**  
+Docker containers run all services:
+- **PostgreSQL**: Raw data storage
+- **MinIO**: S3-compatible storage
+- **ClickHouse**: Analytics database
+- **pgAdmin**: PostgreSQL web UI
+
+**Key Commands:**
+```bash
+# Start all services
+docker-compose up -d
+
+# Check status
+docker-compose ps
+
+# View logs
+docker-compose logs -f
+
+# Stop all
+docker-compose down
+```
+
+---
+
+## 2. Architecture Overview
 
 This project implements a **three-tier data lakehouse architecture** with **two raw data sources**:
 
@@ -151,7 +430,7 @@ graph TB
 
 This section documents the schema of the raw data sources.
 
-### 4.1. PostgreSQL Raw Tables
+### 5.1. PostgreSQL Raw Tables
 
 The PostgreSQL database contains the following tables:
 
@@ -207,7 +486,7 @@ claim_id | customer_id | claim_date | claim_type | claim_status | claim_amount |
 1        | 1           | 2024-01-15 | Auto       | Open          | 5000.00      | Sedan        | Agent Smith
 ```
 
-### 4.2. Kaggle CSV Schema
+### 5.2. Kaggle CSV Schema
 
 The Kaggle dataset (`buntystas/vehicle-claims-data`) contains:
 
@@ -251,7 +530,7 @@ claim_id,policy_number,claim_date,claim_amount,claim_type,claim_status,vehicle_t
 CLM00000001,POL000001,2024-01-15,5000.00,Collision,Approved,Sedan,35,N,500,Los Angeles,Rear-end
 ```
 
-### 4.3. Data Mapping (PostgreSQL ↔ Kaggle)
+### 5.3. Data Mapping (PostgreSQL ↔ Kaggle)
 
 | PostgreSQL Field | Kaggle CSV Field | Notes |
 |-----------------|------------------|-------|
@@ -269,7 +548,7 @@ CLM00000001,POL000001,2024-01-15,5000.00,Collision,Approved,Sedan,35,N,500,Los A
 | N/A | `driver_age` | Not in PostgreSQL |
 | N/A | `fraud_indicator` | Not in PostgreSQL |
 
-### 4.4. Silver Layer Schema
+### 5.4. Silver Layer Schema
 
 The **Silver** layer transforms raw data and stores it in MinIO as Parquet files.
 
@@ -339,7 +618,7 @@ The **Silver** layer transforms raw data and stores it in MinIO as Parquet files
 - Other:       All other types
 ```
 
-### 4.5. Gold Layer Schema
+### 5.5. Gold Layer Schema
 
 The **Gold** layer contains aggregated analytics tables in ClickHouse (no schema prefix).
 
@@ -433,7 +712,7 @@ insurance-company-data-pipeline-example/
 
 ---
 
-## 5. Test Pyramid
+## 6. Test Pyramid
 
 This project follows the **test pyramid** methodology with four levels of testing:
 
@@ -452,7 +731,7 @@ style L1 fill:#ffc107,color:#000,stroke:#333,stroke-width:2px
 style L0 fill:#ffeb3b,color:#000,stroke:#333,stroke-width:2px
 ```
 
-### 5.1. Test Levels Description
+### 7.1. Test Levels Description
 
 | Level | Name | Description |
 |-------|------|-------------|
@@ -465,7 +744,7 @@ style L0 fill:#ffeb3b,color:#000,stroke:#333,stroke-width:2px
 
 ## 7. Quick Start
 
-### 6.1. Start Infrastructure
+### 8.1. Start Infrastructure
 
 ```bash
 docker-compose up -d
@@ -474,14 +753,14 @@ docker-compose up -d
 docker-compose ps
 ```
 
-### 6.2. Generate Source Data
+### 8.2. Generate Source Data
 
 ```bash
 # Using Go synthetic data generator (1000 customers, 5000 claims)
 go run scripts/synthetic_data_generator.go
 ```
 
-### 6.3. Reset & Regenerate Database
+### 8.3. Reset & Regenerate Database
 
 ```bash
 # Reset database (truncate all tables)
@@ -491,7 +770,7 @@ go run scripts/reset_database.go
 go run scripts/reset_database.go --regenerate
 ```
 
-### 6.4. Run Pipeline
+### 8.4. Run Pipeline
 
 ```bash
 # Run full pipeline: PostgreSQL → MinIO (raw) → MinIO (silver) → ClickHouse (gold)
@@ -506,7 +785,7 @@ cd dbt && dbt run                  # MinIO raw → MinIO silver → ClickHouse g
 
 ## 8. Database Connections
 
-### 7.1. PostgreSQL (Raw Source)
+### 9.1. PostgreSQL (Raw Source)
 
 | Parameter | Value |
 |-----------|-------|
@@ -520,7 +799,7 @@ cd dbt && dbt run                  # MinIO raw → MinIO silver → ClickHouse g
 - `public.customers` - Customer profiles (1,000 rows)
 - `public.claims` - Insurance claims (5,000 rows)
 
-### 7.2. MinIO (Raw + Silver Layers)
+### 9.2. MinIO (Raw + Silver Layers)
 
 | Parameter | Value |
 |-----------|-------|
@@ -546,7 +825,7 @@ s3://insurance-data/
         └── claims_with_agents.parquet
 ```
 
-### 7.3. ClickHouse (Gold Layer)
+### 9.3. ClickHouse (Gold Layer)
 
 | Parameter | Value |
 |-----------|-------|
@@ -567,7 +846,7 @@ s3://insurance-data/
 
 ## 9. Running Tests
 
-### 8.1. Unix/Linux/macOS
+### 10.1. Unix/Linux/macOS
 
 ```bash
 # Run all tests
@@ -580,7 +859,7 @@ s3://insurance-data/
 ./scripts_unix/run_l3_tests.sh  # End-to-end tests
 ```
 
-### 8.2. Windows
+### 10.2. Windows
 
 ```cmd
 REM Run all tests
@@ -593,7 +872,7 @@ scripts_windows\run_l2_tests.bat  -- Integration tests
 scripts_windows\run_l3_tests.bat   -- End-to-end tests
 ```
 
-### 8.3. Direct pytest
+### 10.3. Direct pytest
 
 ```bash
 # Run all tests
@@ -608,9 +887,9 @@ pytest tests/test_L3_e2e.py -v
 
 ---
 
-## 10. SQL Examples
+## 11. SQL Examples
 
-### 10.1. ClickHouse Gold Layer
+### 11.1. ClickHouse Gold Layer
 
 All tables in ClickHouse are accessed **without** schema prefix:
 
@@ -650,7 +929,7 @@ ORDER BY customer_count DESC;
 
 ---
 
-## 11. Environment Variables
+## 12. Environment Variables
 
 Create a `.env` file in the project root:
 
@@ -673,7 +952,7 @@ CLICKHOUSE_PASSWORD=clickhouse_pass
 
 ---
 
-## 12. Troubleshooting
+## 13. Troubleshooting
 
 ### 12.1. Check MinIO Console
 
@@ -707,13 +986,17 @@ docker exec -it insurance_postgres psql -U insurance_user -d insurance_db
 
 ---
 
-## 13. License
+## 14. License
+
+ISC License
 
 Copyright (c) 2026 BugMentor (https://bugmentor.com)
 
+Permission to use, copy, modify, and/or distribute this software for any purpose with or without fee is hereby granted, provided that the above copyright notice and this permission notice appear in all copies.
+
 ---
 
-## 14. Author
+## 15. Author
 
 **Eng. Matías J. Magni**  
 CEO @ BugMentor  
