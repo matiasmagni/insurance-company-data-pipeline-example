@@ -4,8 +4,8 @@ Insurance Company Data Pipeline - L0 Unit Tests (Isolated)
 ============================================================================
 Copyright (c) 2026 BugMentor (https://bugmentor.com)
 
-L0: Unit tests - Test actual functions from the codebase
-     No I/O, no mocks, just pure functions from scripts
+L0: Pure unit tests - NO file checks, NO configs, ONLY business logic
+     Test actual transformation/validation rules that drive the analytics
 
 Usage:
     pytest tests/test_L0_unit_isolated.py -v
@@ -14,60 +14,20 @@ Usage:
 
 import pytest
 import pandas as pd
-import os
-import re
-from pathlib import Path
 
 
 # =============================================================================
-# Test Go randomCreditScore() function logic (500-800)
+# CORE BUSINESS RULE: Risk Bucket (from DBT silver_customers)
 # =============================================================================
+# DBT SQL: CASE WHEN credit_score >= 750 THEN 'Excellent' WHEN credit_score >= 700
+#              THEN 'Good' WHEN credit_score >= 650 THEN 'Fair' ELSE 'Poor' END
 
 
-class TestGoRandomFunctions:
-    """L0: Test Go code random function logic from synthetic_data_generator.go."""
+class TestRiskBucketRule:
+    """L0: Test risk bucket business rule."""
 
-    def test_credit_score_range(self):
-        """L0: Test randomCreditScore() generates 500-800."""
-        # From Go: return 500 + rand.Intn(300) = 500-799
-        min_score = 500
-        max_score = 800
-
-        # Simulate the function logic
-        scores = [500 + i for i in range(300)]
-
-        assert min(scores) == 500
-        assert max(scores) == 799
-        assert len(scores) == 300
-
-    def test_annual_income_range(self):
-        """L0: Test randomAnnualIncome() generates 30k-200k."""
-        # From Go: return 30000 + rand.Float64()*170000
-        min_income = 30000
-        max_income = 200000
-
-        assert min_income == 30000
-        assert max_income == 200000
-
-    def test_credit_score_valid_for_risk(self):
-        """L0: Test credit scores are in valid range for risk calculation."""
-        # DBT uses: >=750 Excellent, >=700 Good, >=650 Fair, <650 Poor
-        scores = [500, 650, 700, 750, 800]
-
-        for score in scores:
-            assert 300 <= score <= 850, f"Invalid score: {score}"
-
-
-# =============================================================================
-# Test DBT risk_bucket transformation logic
-# =============================================================================
-
-
-class TestDBTRiskBucket:
-    """L0: Test DBT risk_bucket transformation from silver_customers.sql."""
-
-    def calculate_risk_bucket(self, credit_score: int) -> str:
-        """Replicate DBT CASE logic from silver_customers.sql"""
+    def credit_to_risk(self, credit_score: int) -> str:
+        """Pure function: credit score to risk bucket."""
         if credit_score >= 750:
             return "Excellent"
         elif credit_score >= 700:
@@ -77,279 +37,240 @@ class TestDBTRiskBucket:
         else:
             return "Poor"
 
-    def test_risk_bucket_excellent(self):
-        """L0: Test credit_score >= 750 returns Excellent."""
-        assert self.calculate_risk_bucket(750) == "Excellent"
-        assert self.calculate_risk_bucket(800) == "Excellent"
-        assert self.calculate_risk_bucket(999) == "Excellent"
+    def test_excellent_when_credit_750_plus(self):
+        assert self.credit_to_risk(750) == "Excellent"
+        assert self.credit_to_risk(800) == "Excellent"
 
-    def test_risk_bucket_good(self):
-        """L0: Test 700 <= credit_score < 750 returns Good."""
-        assert self.calculate_risk_bucket(700) == "Good"
-        assert self.calculate_risk_bucket(725) == "Good"
-        assert self.calculate_risk_bucket(749) == "Good"
+    def test_good_when_credit_700_to_749(self):
+        assert self.credit_to_risk(700) == "Good"
+        assert self.credit_to_risk(725) == "Good"
 
-    def test_risk_bucket_fair(self):
-        """L0: Test 650 <= credit_score < 700 returns Fair."""
-        assert self.calculate_risk_bucket(650) == "Fair"
-        assert self.calculate_risk_bucket(675) == "Fair"
-        assert self.calculate_risk_bucket(699) == "Fair"
+    def test_fair_when_credit_650_to_699(self):
+        assert self.credit_to_risk(650) == "Fair"
+        assert self.credit_to_risk(675) == "Fair"
 
-    def test_risk_bucket_poor(self):
-        """L0: Test credit_score < 650 returns Poor."""
-        assert self.calculate_risk_bucket(300) == "Poor"
-        assert self.calculate_risk_bucket(500) == "Poor"
-        assert self.calculate_risk_bucket(649) == "Poor"
+    def test_poor_when_credit_below_650(self):
+        assert self.credit_to_risk(300) == "Poor"
+        assert self.credit_to_risk(649) == "Poor"
+
+
+class TestRiskBucketDistribution:
+    """L0: Test risk distribution on sample data."""
+
+    def test_distribution_percentages(self):
+        """L0: Verify distribution math."""
+        scores = [800, 750, 725, 700, 650, 600, 500]
+        risk_map = {
+            score: (
+                "Excellent"
+                if score >= 750
+                else "Good"
+                if score >= 700
+                else "Fair"
+                if score >= 650
+                else "Poor"
+            )
+            for score in scores
+        }
+
+        counts = {}
+        for r in risk_map.values():
+            counts[r] = counts.get(r, 0) + 1
+
+        assert counts["Excellent"] == 2
+        assert counts["Good"] == 2
+        assert counts["Fair"] == 1
+        assert counts["Poor"] == 2
 
 
 # =============================================================================
-# Test DBT claim_status_category transformation
+# CORE BUSINESS RULE: Claim Status Category (from DBT silver_claims)
 # =============================================================================
+# DBT SQL: CASE WHEN status='Closed' THEN 'Closed' WHEN status='Denied' THEN 'Denied'
+#              WHEN status='Open' THEN 'Open' ELSE 'Other' END
 
 
-class TestDBTClaimStatusCategory:
-    """L0: Test DBT claim_status_category from silver_claims.sql."""
+class TestClaimStatusRule:
+    """L0: Test claim status categorization."""
 
-    def calculate_status_category(self, claim_status: str) -> str:
-        """Replicate DBT CASE logic from silver_claims.sql"""
-        if claim_status == "Closed":
+    def status_to_category(self, status: str) -> str:
+        if status == "Closed":
             return "Closed"
-        elif claim_status == "Denied":
+        elif status == "Denied":
             return "Denied"
-        elif claim_status == "Open":
+        elif status == "Open":
             return "Open"
         else:
             return "Other"
 
-    def test_status_closed(self):
-        """L0: Test Closed returns Closed."""
-        assert self.calculate_status_category("Closed") == "Closed"
+    def test_pending_maps_to_other(self):
+        """L0: 'Pending' is not a valid category in silver."""
+        assert self.status_to_category("Pending") == "Other"
 
-    def test_status_denied(self):
-        """L0: Test Denied returns Denied."""
-        assert self.calculate_status_category("Denied") == "Denied"
+    def test_investigation_maps_to_other(self):
+        assert self.status_to_category("Investigation") == "Other"
 
-    def test_status_open(self):
-        """L0: Test Open returns Open."""
-        assert self.calculate_status_category("Open") == "Open"
-
-    def test_status_other(self):
-        """L0: Test other statuses return Other."""
-        assert self.calculate_status_category("Pending") == "Other"
-        assert self.calculate_status_category("Investigation") == "Other"
-        assert self.calculate_status_category("Unknown") == "Other"
+    def test_closed_stays_closed(self):
+        assert self.status_to_category("Closed") == "Closed"
 
 
 # =============================================================================
-# Test DBT vehicle_category transformation
+# CORE BUSINESS RULE: Vehicle Category (from DBT silver_claims)
 # =============================================================================
+# DBT SQL: CASE WHEN vehicle IN('Sedan','Coupe','Wagon') THEN 'Car'
+#              WHEN vehicle='SUV' THEN 'SUV' WHEN vehicle='Truck' THEN 'Truck'
+#              WHEN vehicle='Motorcycle' THEN 'Motorcycle' ELSE 'Other' END
 
 
-class TestDBTVehicleCategory:
-    """L0: Test DBT vehicle_category from silver_claims.sql."""
+class TestVehicleCategoryRule:
+    """L0: Test vehicle categorization."""
 
-    def calculate_vehicle_category(self, vehicle_type: str) -> str:
-        """Replicate DBT CASE logic from silver_claims.sql"""
-        if vehicle_type in ("Sedan", "Coupe", "Wagon"):
+    def vehicle_to_category(self, vehicle: str) -> str:
+        if vehicle in ("Sedan", "Coupe", "Wagon"):
             return "Car"
-        elif vehicle_type == "SUV":
+        elif vehicle == "SUV":
             return "SUV"
-        elif vehicle_type == "Truck":
+        elif vehicle == "Truck":
             return "Truck"
-        elif vehicle_type == "Motorcycle":
+        elif vehicle == "Motorcycle":
             return "Motorcycle"
         else:
             return "Other"
 
-    def test_vehicle_car(self):
-        """L0: Test Sedan/Coupe/Wagon return Car."""
-        assert self.calculate_vehicle_category("Sedan") == "Car"
-        assert self.calculate_vehicle_category("Coupe") == "Car"
-        assert self.calculate_vehicle_category("Wagon") == "Car"
+    def test_sedan_is_car(self):
+        assert self.vehicle_to_category("Sedan") == "Car"
 
-    def test_vehicle_suv(self):
-        """L0: Test SUV returns SUV."""
-        assert self.calculate_vehicle_category("SUV") == "SUV"
+    def test_suv_is_suv(self):
+        assert self.vehicle_to_category("SUV") == "SUV"
 
-    def test_vehicle_truck(self):
-        """L0: Test Truck returns Truck."""
-        assert self.calculate_vehicle_category("Truck") == "Truck"
-
-    def test_vehicle_motorcycle(self):
-        """L0: Test Motorcycle returns Motorcycle."""
-        assert self.calculate_vehicle_category("Motorcycle") == "Motorcycle"
-
-    def test_vehicle_other(self):
-        """L0: Test other vehicle types return Other."""
-        assert self.calculate_vehicle_category("Van") == "Other"
-        assert self.calculate_vehicle_category("Bus") == "Other"
+    def test_van_is_other(self):
+        """L0: Van is not a category in silver layer."""
+        assert self.vehicle_to_category("Van") == "Other"
 
 
 # =============================================================================
-# Test Python DLT pipeline configuration
+# CORE BUSINESS RULE: Claim Amount Validation
 # =============================================================================
 
 
-class TestDLTPipelineConfig:
-    """L0: Test dlt_pipeline.py configuration functions."""
+class TestClaimAmountValidation:
+    """L0: Test claim amount business rules."""
 
-    def test_postgres_config_defaults(self):
-        """L0: Test default PostgreSQL config matches dlt_pipeline.py."""
-        config = {
-            "host": os.getenv("POSTGRES_HOST", "localhost"),
-            "port": int(os.getenv("POSTGRES_PORT", 5432)),
-            "database": os.getenv("POSTGRES_DB", "insurance_db"),
-            "user": os.getenv("POSTGRES_USER", "insurance_user"),
-            "password": os.getenv("POSTGRES_PASSWORD", "insurance_pass"),
-        }
+    def is_valid_amount(self, amount: float) -> bool:
+        """Business rule: claim amount > 0 and <= 10M."""
+        return amount > 0 and amount <= 10_000_000
 
-        assert config["host"] == "localhost"
-        assert config["port"] == 5432
-        assert config["database"] == "insurance_db"
-        assert config["user"] == "insurance_user"
+    def test_zero_is_invalid(self):
+        assert self.is_valid_amount(0) is False
 
-    def test_minio_config_defaults(self):
-        """L0: Test default MinIO config matches dlt_pipeline.py."""
-        config = {
-            "endpoint": os.getenv("MINIO_ENDPOINT", "localhost:9900"),
-            "access_key": os.getenv("MINIO_ROOT_USER", "minioadmin"),
-            "secret_key": os.getenv("MINIO_ROOT_PASSWORD", "minioadmin"),
-            "bucket": os.getenv("MINIO_BUCKET", "insurance-data"),
-        }
+    def test_negative_is_invalid(self):
+        assert self.is_valid_amount(-100) is False
 
-        assert config["endpoint"] == "localhost:9900"
-        assert config["access_key"] == "minioadmin"
-        assert config["bucket"] == "insurance-data"
+    def test_over_10m_is_invalid(self):
+        assert self.is_valid_amount(10_000_001) is False
 
-    def test_raw_tables_list(self):
-        """L0: Test RAW_TABLES matches dlt_pipeline.py."""
-        raw_tables = ["customers", "claims"]
-        assert raw_tables == ["customers", "claims"]
+    def test_5m_is_valid(self):
+        assert self.is_valid_amount(5_000_000) is True
 
 
 # =============================================================================
-# Test DLT export logic
+# CORE BUSINESS RULE: Credit Score Range
 # =============================================================================
 
 
-class TestDLTExportLogic:
-    """L0: Test export_table_to_parquet logic."""
+class TestCreditScoreValidation:
+    """L0: Test credit score business rules."""
 
-    def test_parquet_filename_format(self):
-        """L0: Test parquet filename format matches dlt_pipeline.py."""
-        table_name = "customers"
-        timestamp = "20240115_123456"
-        filename = f"{table_name}_{timestamp}.parquet"
+    def is_valid_score(self, score: int) -> bool:
+        """Business rule: 300 <= credit_score <= 850."""
+        return 300 <= score <= 850
 
-        assert filename == "customers_20240115_123456.parquet"
-        assert filename.endswith(".parquet")
+    def test_300_is_min_valid(self):
+        assert self.is_valid_score(300) is True
 
-    def test_s3_key_format(self):
-        """L0: Test S3 key format matches dlt_pipeline.py."""
-        table_name = "claims"
-        filename = "claims_20240115_123456.parquet"
-        s3_key = f"raw/{table_name}/{filename}"
+    def test_850_is_max_valid(self):
+        assert self.is_valid_score(850) is True
 
-        assert s3_key == "raw/claims/claims_20240115_123456.parquet"
-        assert s3_key.startswith("raw/")
+    def test_below_300_is_invalid(self):
+        assert self.is_valid_score(299) is False
 
-    def test_dataframe_to_parquet(self):
-        """L0: Test DataFrame can be converted to parquet-ready format."""
+    def test_above_850_is_invalid(self):
+        assert self.is_valid_score(851) is False
+
+
+# =============================================================================
+# CORE BUSINESS RULE: Email Format
+# =============================================================================
+
+
+class TestEmailValidation:
+    """L0: Test email validation business rule."""
+
+    def is_valid_email(self, email: str) -> bool:
+        if not email or "@" not in email:
+            return False
+        parts = email.split("@")
+        return len(parts) == 2 and all(parts)
+
+    def test_valid_email(self):
+        assert self.is_valid_email("test@example.com") is True
+
+    def test_no_at_sign(self):
+        assert self.is_valid_email("test.example.com") is False
+
+
+# =============================================================================
+# CORE BUSINESS RULE: Aggregation Results
+# =============================================================================
+
+
+class TestAggregationMath:
+    """L0: Test aggregation calculations."""
+
+    def test_sum_by_category(self):
+        """L0: Total claims by status."""
         df = pd.DataFrame(
-            {"id": [1, 2, 3], "name": ["A", "B", "C"], "value": [100.0, 200.0, 300.0]}
+            {
+                "status": ["Open", "Open", "Closed", "Closed", "Denied"],
+                "amount": [1000, 2000, 3000, 1500, 500],
+            }
         )
+        result = df.groupby("status")["amount"].sum()
 
-        assert len(df) == 3
-        assert list(df.columns) == ["id", "name", "value"]
-        assert df["value"].dtype in ["float64", "float32"]
+        assert result["Open"] == 3000
+        assert result["Closed"] == 4500
+        assert result["Denied"] == 500
 
+    def test_avg_by_category(self):
+        """L0: Average claim by status."""
+        df = pd.DataFrame({"status": ["Open", "Closed"], "amount": [1000, 2000]})
+        result = df.groupby("status")["amount"].mean()
 
-# =============================================================================
-# Test Go data generation constants
-# =============================================================================
-
-
-class TestGoConstants:
-    """L0: Test Go code constants from synthetic_data_generator.go."""
-
-    def test_claim_types(self):
-        """L0: Test claimTypes from Go code."""
-        claim_types = ["Auto", "Home", "Life", "Health", "Property"]
-        assert len(claim_types) == 5
-        assert "Auto" in claim_types
-        assert "Life" in claim_types
-
-    def test_claim_statuses(self):
-        """L0: Test claimStatuses from Go code."""
-        claim_statuses = ["Open", "Closed", "Pending", "Denied", "Investigation"]
-        assert len(claim_statuses) == 5
-
-    def test_vehicle_types(self):
-        """L0: Test vehicleTypes from Go code."""
-        vehicle_types = ["Sedan", "SUV", "Truck", "Motorcycle", "Van", "Coupe", "Wagon"]
-        assert len(vehicle_types) == 7
-
-    def test_first_names(self):
-        """L0: Test Go has firstNames variable."""
-        # Just verify we can define the list (actual data is in Go)
-        assert True
-
-    def test_last_names(self):
-        """L0: Test Go has lastNames variable."""
-        assert True
+        assert result["Open"] == 1000
+        assert result["Closed"] == 2000
 
 
 # =============================================================================
-# Test PostgreSQL schema from Go CREATE TABLE
+# CORE BUSINESS RULE: Data Completeness Check
 # =============================================================================
 
 
-class TestPostgreSQLSchema:
-    """L0: Test PostgreSQL schema structure."""
+class TestDataCompleteness:
+    """L0: Test data completeness rules."""
 
-    def test_customers_columns(self):
-        """L0: Test customers table columns."""
-        columns = [
-            "customer_id",
-            "first_name",
-            "last_name",
-            "email",
-            "phone_number",
-            "date_of_birth",
-            "address",
-            "city",
-            "state",
-            "zip_code",
-            "country",
-            "credit_score",
-            "annual_income",
-            "occupation",
-            "created_at",
-            "updated_at",
-        ]
-        assert len(columns) == 16
-        assert "customer_id" in columns
-        assert "credit_score" in columns
+    def test_has_null_detection(self):
+        """L0: Can detect null values in DataFrame."""
+        df = pd.DataFrame(
+            {"customer_id": [1, 2, None, 4], "name": ["A", "B", "C", "D"]}
+        )
+        has_null = bool(df["customer_id"].isna().any())
+        assert has_null is True
 
-    def test_claims_columns(self):
-        """L0: Test claims table columns."""
-        columns = [
-            "claim_id",
-            "customer_id",
-            "claim_date",
-            "claim_type",
-            "claim_status",
-            "claim_amount",
-            "claim_paid_amount",
-            "vehicle_type",
-            "agent_id",
-            "agent_name",
-            "created_at",
-            "updated_at",
-        ]
-        assert len(columns) == 12
-        assert "claim_id" in columns
-        assert "claim_amount" in columns
+    def test_null_count(self):
+        """L0: Count null values."""
+        df = pd.DataFrame({"id": [1, 2, 3], "value": [100, None, 300]})
+        null_count = int(df["value"].isna().sum())
+        assert null_count == 1
 
 
 if __name__ == "__main__":
