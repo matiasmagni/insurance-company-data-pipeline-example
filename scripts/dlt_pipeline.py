@@ -32,9 +32,9 @@ def run_dlt_pipeline():
     pg_user = os.getenv("POSTGRES_USER", "insurance_user")
     pg_pass = os.getenv("POSTGRES_PASSWORD", "insurance_pass")
     pg_host = os.getenv("POSTGRES_HOST", "localhost")
-    pg_port = os.getenv("POSTGRES_PORT", "5435")
+    pg_port = os.getenv("POSTGRES_PORT", "5432")
     pg_db = os.getenv("POSTGRES_DB", "insurance_db")
-    
+
     conn_str = f"postgresql://{pg_user}:{pg_pass}@{pg_host}:{pg_port}/{pg_db}"
 
     # MinIO (S3) destination config
@@ -45,9 +45,13 @@ def run_dlt_pipeline():
 
     # Set environment variables for DLT filesystem destination
     os.environ["DESTINATION__FILESYSTEM__BUCKET_URL"] = f"s3://{minio_bucket}"
-    os.environ["DESTINATION__FILESYSTEM__CREDENTIALS__ENDPOINT_URL"] = f"http://{minio_endpoint}"
+    os.environ["DESTINATION__FILESYSTEM__CREDENTIALS__ENDPOINT_URL"] = (
+        f"http://{minio_endpoint}"
+    )
     os.environ["DESTINATION__FILESYSTEM__CREDENTIALS__AWS_ACCESS_KEY_ID"] = minio_user
-    os.environ["DESTINATION__FILESYSTEM__CREDENTIALS__AWS_SECRET_ACCESS_KEY"] = minio_pass
+    os.environ["DESTINATION__FILESYSTEM__CREDENTIALS__AWS_SECRET_ACCESS_KEY"] = (
+        minio_pass
+    )
 
     try:
         # Create pipeline

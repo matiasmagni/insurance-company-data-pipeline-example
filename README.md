@@ -497,7 +497,7 @@ customer_id | first_name | last_name | email                     | credit_score 
 
 **Sample Row:**
 ```
-claim_id | customer_id | claim_date | claim_type | claim_status | claim_amount | vehicle_type | agent_name
+claim_id | customer_id | claim_date | claim_type | claim_status  | claim_amount | vehicle_type | agent_name
 ---------|-------------|------------|------------|---------------|--------------|--------------|-------------
 1        | 1           | 2024-01-15 | Auto       | Open          | 5000.00      | Sedan        | Agent Smith
 ```
@@ -660,10 +660,10 @@ Direct copy of `silver_claims` view with all columns.
 **Sample:**
 ```sql
 SELECT * FROM claims_by_status;
--- status  | claim_count | total_claim_amount | total_paid_amount
--- Closed   | 2000       | 15000000.00        | 12000000.00
--- Open     | 1500       | 8000000.00         | 0.00
--- Denied   | 500        | 3000000.00         | 0.00
+-- status   | claim_count | total_claim_amount | total_paid_amount
+-- Closed   | 2000        | 15000000.00        | 12000000.00
+-- Open     | 1500        | 8000000.00         | 0.00
+-- Denied   | 500         | 3000000.00         | 0.00
 ```
 
 #### gold_claims_by_agent (Aggregation)
@@ -749,8 +749,8 @@ style L0 fill:#ffeb3b,color:#000,stroke:#333,stroke-width:2px
 
 ### 7.1. Test Levels Description
 
-| Level | Name | Description |
-|-------|------|-------------|
+| Level  | Name | Description |
+|--------|------|-------------|
 | **L0** | Unit Isolation | Pure functions, no I/O, no dependencies - most tests |
 | **L1** | Unit with Mocks | Mocked dependencies, partial mocks - more tests |
 | **L2** | Integration Services | Real services, local Docker - some tests |
@@ -869,8 +869,8 @@ assert result == 5
 
 ### 7.3. Why This Matters
 
-| Level | Tests | Why |
-|-------|-------|-----|
+| Level  | Tests | Why |
+|--------|-------|-----|
 | **L0** | Fast (ms) | Most tests - catch logic errors early |
 | **L1** | Fast (ms) | Test integration points with mocks |
 | **L2** | Medium (s) | Test real service communication |

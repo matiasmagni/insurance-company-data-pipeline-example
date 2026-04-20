@@ -1,11 +1,12 @@
 """
 Insurance Data Transformations
-==============================
+===============================
 
 Actual transformation functions used by the pipeline.
 These are imported and tested in L0 tests.
 """
 
+import os
 import pandas as pd
 from typing import Optional
 
@@ -41,7 +42,7 @@ def calculate_risk_bucket(credit_score: Optional[int]) -> str:
     """
     if credit_score is None or pd.isna(credit_score):
         return RISK_BUCKET_UNKNOWN
-    
+
     if credit_score >= 750:
         return RISK_BUCKET_EXCELLENT
     if credit_score >= 700:
@@ -111,24 +112,24 @@ def apply_vehicle_categories(df: pd.DataFrame) -> pd.DataFrame:
 
 
 class Config:
-    """Application configuration."""
+    """Application configuration - all values read from environment."""
 
-    POSTGRES_HOST = "localhost"
-    POSTGRES_PORT = 5435
-    POSTGRES_DB = "insurance_db"
-    POSTGRES_USER = "insurance_user"
-    POSTGRES_PASSWORD = "insurance_pass"
+    POSTGRES_HOST = os.getenv("POSTGRES_HOST", "localhost")
+    POSTGRES_PORT = int(os.getenv("POSTGRES_PORT", "5432"))
+    POSTGRES_DB = os.getenv("POSTGRES_DB", "insurance_db")
+    POSTGRES_USER = os.getenv("POSTGRES_USER", "insurance_user")
+    POSTGRES_PASSWORD = os.getenv("POSTGRES_PASSWORD", "insurance_pass")
 
-    MINIO_ENDPOINT = "localhost:9900"
-    MINIO_ACCESS_KEY = "minioadmin"
-    MINIO_SECRET_KEY = "minioadmin"
-    MINIO_BUCKET = "insurance-data"
+    MINIO_ENDPOINT = os.getenv("MINIO_ENDPOINT", "localhost:9900")
+    MINIO_ACCESS_KEY = os.getenv("MINIO_ROOT_USER", "minioadmin")
+    MINIO_SECRET_KEY = os.getenv("MINIO_ROOT_PASSWORD", "minioadmin")
+    MINIO_BUCKET = os.getenv("MINIO_BUCKET", "insurance-data")
 
-    CLICKHOUSE_HOST = "localhost"
-    CLICKHOUSE_PORT = 8123
-    CLICKHOUSE_DB = "insurance_db"
-    CLICKHOUSE_USER = "default"
-    CLICKHOUSE_PASSWORD = "clickhouse_pass"
+    CLICKHOUSE_HOST = os.getenv("CLICKHOUSE_HOST", "localhost")
+    CLICKHOUSE_PORT = int(os.getenv("CLICKHOUSE_PORT", "8123"))
+    CLICKHOUSE_DB = os.getenv("CLICKHOUSE_DB", "insurance_db")
+    CLICKHOUSE_USER = os.getenv("CLICKHOUSE_USER", "default")
+    CLICKHOUSE_PASSWORD = os.getenv("CLICKHOUSE_PASSWORD", "clickhouse_pass")
 
 
 def validate_credit_score(score: int) -> bool:

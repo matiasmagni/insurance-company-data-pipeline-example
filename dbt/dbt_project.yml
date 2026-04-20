@@ -14,8 +14,12 @@ test-paths: ['tests']
 target: 'dev'
 
 vars:
-  minio_endpoint: 'localhost:9900'
-  minio_bucket: 'insurance-data'
-  clickhouse_host: 'localhost'
-  clickhouse_port: 8123
-  clickhouse_database: 'insurance_db'
+  minio_endpoint: "{{ env_var('MINIO_ENDPOINT', 'localhost:9900') }}"
+  minio_bucket: "{{ env_var('MINIO_BUCKET', 'insurance-data') }}"
+  minio_access_key: "{{ env_var('MINIO_ROOT_USER', 'minioadmin') }}"
+  minio_secret_key: "{{ env_var('MINIO_ROOT_PASSWORD', 'minioadmin') }}"
+  clickhouse_host: "{{ env_var('CLICKHOUSE_HOST', 'localhost') }}"
+  clickhouse_port: "{{ env_var('CLICKHOUSE_PORT', '8123') | as_number }}"
+  clickhouse_database: "{{ env_var('CLICKHOUSE_DB', 'insurance_db') }}"
+  clickhouse_user: "{{ env_var('CLICKHOUSE_USER', 'default') }}"
+  clickhouse_password: "{{ env_var('CLICKHOUSE_PASSWORD', 'clickhouse_pass') }}"

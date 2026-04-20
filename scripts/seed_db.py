@@ -1,15 +1,17 @@
 #!/usr/bin/env python3
+import os
 import psycopg2
 import random
 from datetime import datetime, timedelta
 
+
 def seed_db():
     conn = psycopg2.connect(
-        host="127.0.0.1",
-        port=5435,
-        user="insurance_user",
-        password="insurance_pass",
-        database="insurance_db"
+        host=os.getenv("POSTGRES_HOST", "localhost"),
+        port=int(os.getenv("POSTGRES_PORT", "5432")),
+        user=os.getenv("POSTGRES_USER", "insurance_user"),
+        password=os.getenv("POSTGRES_PASSWORD", "insurance_pass"),
+        database=os.getenv("POSTGRES_DB", "insurance_db"),
     )
     cur = conn.cursor()
 
@@ -53,8 +55,26 @@ def seed_db():
         );
     """)
 
-    first_names = ["James", "Mary", "John", "Patricia", "Robert", "Jennifer", "Michael", "Linda"]
-    last_names = ["Smith", "Johnson", "Williams", "Brown", "Jones", "Garcia", "Miller", "Davis"]
+    first_names = [
+        "James",
+        "Mary",
+        "John",
+        "Patricia",
+        "Robert",
+        "Jennifer",
+        "Michael",
+        "Linda",
+    ]
+    last_names = [
+        "Smith",
+        "Johnson",
+        "Williams",
+        "Brown",
+        "Jones",
+        "Garcia",
+        "Miller",
+        "Davis",
+    ]
     occupations = ["Engineer", "Doctor", "Lawyer", "Teacher", "Accountant"]
     cities = ["New York", "Los Angeles", "Chicago", "Houston"]
     claim_types = ["Auto", "Home", "Life", "Health"]
@@ -66,24 +86,49 @@ def seed_db():
         fn = random.choice(first_names)
         ln = random.choice(last_names)
         email = f"{fn.lower()}.{ln.lower()}{i}@example.com"
-        cur.execute("""
+        cur.execute(
+            """
             INSERT INTO customers (first_name, last_name, email, credit_score, annual_income, occupation, city, state)
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
             RETURNING customer_id
-        """, (fn, ln, email, random.randint(500, 850), random.uniform(30000, 200000), random.choice(occupations), random.choice(cities), "NY"))
+        """,
+            (
+                fn,
+                ln,
+                email,
+                random.randint(500, 850),
+                random.uniform(30000, 200000),
+                random.choice(occupations),
+                random.choice(cities),
+                "NY",
+            ),
+        )
         cust_id = cur.fetchone()[0]
 
         for _ in range(random.randint(1, 5)):
             amount = random.uniform(1000, 50000)
-            cur.execute("""
+            cur.execute(
+                """
                 INSERT INTO claims (customer_id, claim_date, claim_type, claim_status, claim_amount, claim_paid_amount, vehicle_type, agent_name)
                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-            """, (cust_id, datetime.now() - timedelta(days=random.randint(0, 365)), random.choice(claim_types), random.choice(claim_statuses), amount, amount if random.random() > 0.5 else 0, random.choice(vehicle_types), "Agent Smith"))
+            """,
+                (
+                    cust_id,
+                    datetime.now() - timedelta(days=random.randint(0, 365)),
+                    random.choice(claim_types),
+                    random.choice(claim_statuses),
+                    amount,
+                    amount if random.random() > 0.5 else 0,
+                    random.choice(vehicle_types),
+                    "Agent Smith",
+                ),
+            )
 
     conn.commit()
     cur.close()
     conn.close()
     print("Database seeded successfully!")
+
 
 if __name__ == "__main__":
     seed_db()

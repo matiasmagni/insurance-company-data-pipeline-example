@@ -21,7 +21,11 @@ import sys
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from scripts.dlt_pipeline import run_dlt_pipeline
+try:
+    from scripts.dlt_pipeline import run_dlt_pipeline
+except ImportError:
+    run_dlt_pipeline = None
+
 try:
     from scripts.silver_transform import transform_table_to_parquet
 except ImportError:
@@ -30,7 +34,7 @@ except ImportError:
 # Config
 POSTGRES_CONFIG = {
     "host": os.getenv("POSTGRES_HOST", "localhost"),
-    "port": int(os.getenv("POSTGRES_PORT", "5435")),
+    "port": int(os.getenv("POSTGRES_PORT", "5432")),
     "database": os.getenv("POSTGRES_DB", "insurance_db"),
     "user": os.getenv("POSTGRES_USER", "insurance_user"),
     "password": os.getenv("POSTGRES_PASSWORD", "insurance_pass"),
@@ -58,15 +62,16 @@ class TestDLTToMinIO:
             conn.commit()
             cur.close()
             conn.close()
-            
+
             # 2. Run DLT (modified to test our table)
             # Actually, we'll just run the real one and check if it produced anything
             # if services are up
             import subprocess
             import sys
+
             script_path = Path(__file__).parent.parent / "scripts" / "dlt_pipeline.py"
             subprocess.run([sys.executable, str(script_path)], check=True)
-            
+
             # 3. Check MinIO
             s3 = boto3.client(
                 "s3",
@@ -74,10 +79,12 @@ class TestDLTToMinIO:
                 aws_access_key_id=MINIO_CONFIG["access_key"],
                 aws_secret_access_key=MINIO_CONFIG["secret_key"],
             )
-            
-            response = s3.list_objects_v2(Bucket=MINIO_CONFIG["bucket"], Prefix="raw/customers/")
+
+            response = s3.list_objects_v2(
+                Bucket=MINIO_CONFIG["bucket"], Prefix="raw/customers/"
+            )
             assert "Contents" in response, "DLT did not produce any output in MinIO"
-            
+
         except Exception as e:
             pytest.skip(f"Services unavailable: {e}")
 
@@ -90,9 +97,12 @@ class TestPythonToMinIO:
         try:
             import subprocess
             import sys
-            script_path = Path(__file__).parent.parent / "scripts" / "silver_transform.py"
+
+            script_path = (
+                Path(__file__).parent.parent / "scripts" / "silver_transform.py"
+            )
             subprocess.run([sys.executable, str(script_path)], check=True)
-            
+
             # Check MinIO silver bucket
             s3 = boto3.client(
                 "s3",
@@ -100,10 +110,12 @@ class TestPythonToMinIO:
                 aws_access_key_id=MINIO_CONFIG["access_key"],
                 aws_secret_access_key=MINIO_CONFIG["secret_key"],
             )
-            
-            response = s3.list_objects_v2(Bucket=MINIO_CONFIG["bucket"], Prefix="silver/silver_customers/")
+
+            response = s3.list_objects_v2(
+                Bucket=MINIO_CONFIG["bucket"], Prefix="silver/silver_customers/"
+            )
             assert "Contents" in response, "Silver transform did not produce any output"
-            
+
         except Exception as e:
             pytest.skip(f"Services unavailable: {e}")
 
@@ -116,21 +128,27 @@ class TestMinIOToClickHouse:
         try:
             import subprocess
             import sys
-            script_path = Path(__file__).parent.parent / "scripts" / "load_silver_to_clickhouse.py"
+
+            script_path = (
+                Path(__file__).parent.parent
+                / "scripts"
+                / "load_silver_to_clickhouse.py"
+            )
             subprocess.run([sys.executable, str(script_path)], check=True)
-            
+
             # Check ClickHouse
             import clickhouse_connect
+
             ch = clickhouse_connect.get_client(
                 host=os.getenv("CLICKHOUSE_HOST", "localhost"),
-                port=int(os.getenv("CLICKHOUSE_PORT", 8123)),
+                port=int(os.getenv("CLICKHOUSE_PORT", "8123")),
                 database=os.getenv("CLICKHOUSE_DB", "insurance_db"),
                 username=os.getenv("CLICKHOUSE_USER", "default"),
                 password=os.getenv("CLICKHOUSE_PASSWORD", "clickhouse_pass"),
             )
-            
+
             result = ch.query("SELECT count() FROM silver_customers")
             assert result.result_rows[0][0] >= 0
-            
+
         except Exception as e:
             pytest.skip(f"Services unavailable: {e}")

@@ -4,9 +4,9 @@ dbt_insurance:
   outputs:
     dev:
       type: clickhouse
-      host: localhost
-      port: 8123
-      user: default
-      password: clickhouse_pass
-      dbname: insurance_db
+      host: "{{ env_var('CLICKHOUSE_HOST', 'localhost') }}"
+      port: "{{ env_var('CLICKHOUSE_PORT', '8123') | as_number }}"
+      user: "{{ env_var('CLICKHOUSE_USER', 'default') }}"
+      password: "{{ env_var('CLICKHOUSE_PASSWORD', 'clickhouse_pass') }}"
+      dbname: "{{ env_var('CLICKHOUSE_DB', 'insurance_db') }}"
       schema: ""

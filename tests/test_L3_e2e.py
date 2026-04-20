@@ -31,7 +31,7 @@ CLICKHOUSE_CONFIG = {
 
 POSTGRES_CONFIG = {
     "host": os.getenv("POSTGRES_HOST", "localhost"),
-    "port": int(os.getenv("POSTGRES_PORT", "5435")),
+    "port": int(os.getenv("POSTGRES_PORT", "5432")),
     "database": os.getenv("POSTGRES_DB", "insurance_db"),
     "user": os.getenv("POSTGRES_USER", "insurance_user"),
     "password": os.getenv("POSTGRES_PASSWORD", "insurance_pass"),
@@ -44,46 +44,55 @@ def setup_e2e():
     # 1. Inject 5 new customers into PG
     conn = psycopg2.connect(**POSTGRES_CONFIG)
     cur = conn.cursor()
-    
+
     # Clean up first to ensure deterministic test
     cur.execute("DELETE FROM claims WHERE agent_name = 'E2E_TEST_AGENT'")
     cur.execute("DELETE FROM customers WHERE email LIKE 'e2e_%'")
-    
+
     customers = [
-        (9001, 'E2E', 'User1', 'e2e_1@test.com', 800, 100000), # Excellent
-        (9002, 'E2E', 'User2', 'e2e_2@test.com', 720, 80000),  # Good
-        (9003, 'E2E', 'User3', 'e2e_3@test.com', 670, 60000),  # Fair
-        (9004, 'E2E', 'User4', 'e2e_4@test.com', 600, 40000),  # Poor
-        (9005, 'E2E', 'User5', 'e2e_5@test.com', None, 0),    # Unknown
+        (9001, "E2E", "User1", "e2e_1@test.com", 800, 100000),  # Excellent
+        (9002, "E2E", "User2", "e2e_2@test.com", 720, 80000),  # Good
+        (9003, "E2E", "User3", "e2e_3@test.com", 670, 60000),  # Fair
+        (9004, "E2E", "User4", "e2e_4@test.com", 600, 40000),  # Poor
+        (9005, "E2E", "User5", "e2e_5@test.com", None, 0),  # Unknown
     ]
-    
+
     cur.executemany(
         "INSERT INTO customers (customer_id, first_name, last_name, email, credit_score, annual_income) VALUES (%s, %s, %s, %s, %s, %s)",
-        customers
+        customers,
     )
-    
+
     claims = [
-        (9001, 9001, '2024-01-01', 'Auto', 'Closed', 5000, 'Sedan', 'E2E_TEST_AGENT'),
-        (9002, 9002, '2024-01-02', 'Home', 'Open', 10000, 'SUV', 'E2E_TEST_AGENT'),
-        (9003, 9003, '2024-01-03', 'Life', 'Denied', 100000, 'Truck', 'E2E_TEST_AGENT'),
-        (9004, 9004, '2024-01-04', 'Health', 'Investigation', 2000, 'Motorcycle', 'E2E_TEST_AGENT'),
+        (9001, 9001, "2024-01-01", "Auto", "Closed", 5000, "Sedan", "E2E_TEST_AGENT"),
+        (9002, 9002, "2024-01-02", "Home", "Open", 10000, "SUV", "E2E_TEST_AGENT"),
+        (9003, 9003, "2024-01-03", "Life", "Denied", 100000, "Truck", "E2E_TEST_AGENT"),
+        (
+            9004,
+            9004,
+            "2024-01-04",
+            "Health",
+            "Investigation",
+            2000,
+            "Motorcycle",
+            "E2E_TEST_AGENT",
+        ),
     ]
-    
+
     cur.executemany(
         "INSERT INTO claims (claim_id, customer_id, claim_date, claim_type, claim_status, claim_amount, vehicle_type, agent_name) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)",
-        claims
+        claims,
     )
-    
+
     conn.commit()
     cur.close()
     conn.close()
-    
+
     # 2. Run pipeline
     pipeline_path = Path(__file__).parent.parent / "pipeline.py"
     subprocess.run([sys.executable, str(pipeline_path)], check=True)
-    
+
     yield
-    
+
     # Optional: cleanup
 
 
@@ -109,12 +118,12 @@ class TestE2EValidation:
             WHERE email LIKE 'e2e_%' ORDER BY email
         """)
         rows = dict(result.result_rows)
-        
-        assert rows['e2e_1@test.com'] == 'Excellent'
-        assert rows['e2e_2@test.com'] == 'Good'
-        assert rows['e2e_3@test.com'] == 'Fair'
-        assert rows['e2e_4@test.com'] == 'Poor'
-        assert rows['e2e_5@test.com'] == 'Unknown'
+
+        assert rows["e2e_1@test.com"] == "Excellent"
+        assert rows["e2e_2@test.com"] == "Good"
+        assert rows["e2e_3@test.com"] == "Fair"
+        assert rows["e2e_4@test.com"] == "Poor"
+        assert rows["e2e_5@test.com"] == "Unknown"
 
     def test_gold_claims_categories(self, setup_e2e, ch_client):
         """Verify claim categories are correctly calculated."""
@@ -125,26 +134,32 @@ class TestE2EValidation:
             ORDER BY claim_id
         """)
         rows = {row[0]: (row[1], row[2]) for row in result.result_rows}
-        
+
         # '9001': Auto, Closed, Sedan
-        assert rows['9001'] == ('Closed', 'Car')
+        assert rows["9001"] == ("Closed", "Car")
         # '9002': Home, Open, SUV
-        assert rows['9002'] == ('Open', 'SUV')
+        assert rows["9002"] == ("Open", "SUV")
         # '9003': Life, Denied, Truck
-        assert rows['9003'] == ('Denied', 'Truck')
+        assert rows["9003"] == ("Denied", "Truck")
         # '9004': Health, Investigation, Motorcycle
-        assert rows['9004'] == ('Other', 'Motorcycle')
+        assert rows["9004"] == ("Other", "Motorcycle")
 
     def test_gold_aggregations_exist(self, setup_e2e, ch_client):
         """Check all gold aggregation tables exist and have data."""
-        tables = ['gold_claims_by_status', 'gold_claims_by_agent', 'gold_claims_by_business_line']
+        tables = [
+            "gold_claims_by_status",
+            "gold_claims_by_agent",
+            "gold_claims_by_business_line",
+        ]
         for table in tables:
             result = ch_client.query(f"SELECT count() FROM {table}")
             assert result.result_rows[0][0] > 0
 
     def test_gold_business_line_values(self, setup_e2e, ch_client):
         """Check business line values match expected set."""
-        result = ch_client.query("SELECT distinct business_line FROM gold_claims_by_business_line")
+        result = ch_client.query(
+            "SELECT distinct business_line FROM gold_claims_by_business_line"
+        )
         lines = [row[0] for row in result.result_rows]
         # Should contain at least Auto, Home, Life, Health from our injection
-        assert set(['Auto', 'Home', 'Life', 'Health']).issubset(set(lines))
+        assert set(["Auto", "Home", "Life", "Health"]).issubset(set(lines))

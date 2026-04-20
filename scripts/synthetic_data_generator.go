@@ -5,18 +5,36 @@ import (
 	"fmt"
 	"log"
 	"math/rand"
+	"os"
 	"time"
 
 	_ "github.com/lib/pq"
 )
 
-const (
-	DBHost     = "localhost"
-	DBPort     = 5435
-	DBUser     = "insurance_user"
-	DBPassword = "insurance_pass"
-	DBName     = "insurance_db"
-)
+func getEnv(key, defaultValue string) string {
+	if value, exists := os.LookupEnv(key); exists {
+		return value
+	}
+	return defaultValue
+}
+
+func getEnvInt(key string, defaultValue int) int {
+	if value, exists := os.LookupEnv(key); exists {
+		var intVal int
+		fmt.Sscanf(value, "%d", &intVal)
+		return intVal
+	}
+	return defaultValue
+}
+
+func getDBConfig() (host string, port int, user, password, dbname string) {
+	host = getEnv("POSTGRES_HOST", "localhost")
+	port = getEnvInt("POSTGRES_PORT", 5432)
+	user = getEnv("POSTGRES_USER", "insurance_user")
+	password = getEnv("POSTGRES_PASSWORD", "insurance_pass")
+	dbname = getEnv("POSTGRES_DB", "insurance_db")
+	return
+}
 
 type Customer struct {
 	CustomerID   int
@@ -196,8 +214,9 @@ func generateClaims(db *sql.DB, customerCount, claimsPerCustomer int) error {
 }
 
 func main() {
+	dbHost, dbPort, dbUser, dbPassword, dbName := getDBConfig()
 	connStr := fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s sslmode=disable",
-		DBHost, DBPort, DBUser, DBPassword, DBName)
+		dbHost, dbPort, dbUser, dbPassword, dbName)
 
 	db, err := sql.Open("postgres", connStr)
 	if err != nil {
