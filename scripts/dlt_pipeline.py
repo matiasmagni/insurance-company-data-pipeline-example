@@ -32,7 +32,7 @@ def run_dlt_pipeline():
     pg_user = os.getenv("POSTGRES_USER", "insurance_user")
     pg_pass = os.getenv("POSTGRES_PASSWORD", "insurance_pass")
     pg_host = os.getenv("POSTGRES_HOST", "localhost")
-    pg_port = os.getenv("POSTGRES_PORT", "5432")
+    pg_port = os.getenv("POSTGRES_PORT", "5435")
     pg_db = os.getenv("POSTGRES_DB", "insurance_db")
 
     conn_str = f"postgresql://{pg_user}:{pg_pass}@{pg_host}:{pg_port}/{pg_db}"

@@ -115,7 +115,7 @@ class Config:
     """Application configuration - all values read from environment."""
 
     POSTGRES_HOST = os.getenv("POSTGRES_HOST", "localhost")
-    POSTGRES_PORT = int(os.getenv("POSTGRES_PORT", "5432"))
+    POSTGRES_PORT = int(os.getenv("POSTGRES_PORT", "5435"))
     POSTGRES_DB = os.getenv("POSTGRES_DB", "insurance_db")
     POSTGRES_USER = os.getenv("POSTGRES_USER", "insurance_user")
     POSTGRES_PASSWORD = os.getenv("POSTGRES_PASSWORD", "insurance_pass")

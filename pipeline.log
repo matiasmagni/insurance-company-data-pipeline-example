@@ -400,3 +400,159 @@
 ============================================================
 2026-04-20 02:39:19,606 - INFO - PIPELINE COMPLETED SUCCESSFULLY!
 2026-04-20 02:39:19,606 - INFO - ============================================================
+2026-04-20 15:32:10,956 - INFO - ============================================================
+2026-04-20 15:32:10,956 - INFO - Insurance Company Data Pipeline
+2026-04-20 15:32:10,956 - INFO - ============================================================
+2026-04-20 15:32:10,956 - INFO - 
+>>> Step 0: Download Kaggle data
+2026-04-20 15:32:10,956 - INFO - ------------------------------------------------------------
+2026-04-20 15:32:10,956 - INFO - Running script: download_kaggle_data.py
+2026-04-20 15:32:11,234 - INFO - Script download_kaggle_data.py completed successfully
+2026-04-20 15:32:11,234 - INFO - 
+>>> Step 1a: Extract PG to MinIO (DLT)
+2026-04-20 15:32:11,234 - INFO - ------------------------------------------------------------
+2026-04-20 15:32:11,234 - INFO - Running script: dlt_pipeline.py
+2026-04-20 15:32:12,055 - ERROR - Script dlt_pipeline.py failed with exit code 1
+2026-04-20 15:32:12,055 - ERROR - Pipeline stopped at Step 1a: Extract PG to MinIO (DLT)
+2026-04-20 15:32:19,766 - INFO - ============================================================
+2026-04-20 15:32:19,767 - INFO - Insurance Company Data Pipeline
+2026-04-20 15:32:19,767 - INFO - ============================================================
+2026-04-20 15:32:19,767 - INFO - 
+>>> Step 0: Download Kaggle data
+2026-04-20 15:32:19,767 - INFO - ------------------------------------------------------------
+2026-04-20 15:32:19,767 - INFO - Running script: download_kaggle_data.py
+2026-04-20 15:32:20,103 - INFO - Script download_kaggle_data.py completed successfully
+2026-04-20 15:32:20,104 - INFO - 
+>>> Step 1a: Extract PG to MinIO (DLT)
+2026-04-20 15:32:20,104 - INFO - ------------------------------------------------------------
+2026-04-20 15:32:20,104 - INFO - Running script: dlt_pipeline.py
+2026-04-20 15:32:20,961 - ERROR - Script dlt_pipeline.py failed with exit code 1
+2026-04-20 15:32:20,961 - ERROR - Pipeline stopped at Step 1a: Extract PG to MinIO (DLT)
+2026-04-20 15:32:39,849 - INFO - ============================================================
+2026-04-20 15:32:39,849 - INFO - Insurance Company Data Pipeline
+2026-04-20 15:32:39,849 - INFO - ============================================================
+2026-04-20 15:32:39,849 - INFO - 
+>>> Step 0: Download Kaggle data
+2026-04-20 15:32:39,849 - INFO - ------------------------------------------------------------
+2026-04-20 15:32:39,849 - INFO - Running script: download_kaggle_data.py
+2026-04-20 15:32:40,132 - INFO - Script download_kaggle_data.py completed successfully
+2026-04-20 15:32:40,132 - INFO - 
+>>> Step 1a: Extract PG to MinIO (DLT)
+2026-04-20 15:32:40,132 - INFO - ------------------------------------------------------------
+2026-04-20 15:32:40,132 - INFO - Running script: dlt_pipeline.py
+2026-04-20 15:32:40,943 - ERROR - Script dlt_pipeline.py failed with exit code 1
+2026-04-20 15:32:40,943 - ERROR - Pipeline stopped at Step 1a: Extract PG to MinIO (DLT)
+2026-04-20 15:32:48,345 - INFO - ============================================================
+2026-04-20 15:32:48,345 - INFO - Insurance Company Data Pipeline
+2026-04-20 15:32:48,346 - INFO - ============================================================
+2026-04-20 15:32:48,346 - INFO - 
+>>> Step 0: Download Kaggle data
+2026-04-20 15:32:48,346 - INFO - ------------------------------------------------------------
+2026-04-20 15:32:48,346 - INFO - Running script: download_kaggle_data.py
+2026-04-20 15:32:48,624 - INFO - Script download_kaggle_data.py completed successfully
+2026-04-20 15:32:48,624 - INFO - 
+>>> Step 1a: Extract PG to MinIO (DLT)
+2026-04-20 15:32:48,624 - INFO - ------------------------------------------------------------
+2026-04-20 15:32:48,624 - INFO - Running script: dlt_pipeline.py
+2026-04-20 15:32:49,369 - ERROR - Script dlt_pipeline.py failed with exit code 1
+2026-04-20 15:32:49,369 - ERROR - Pipeline stopped at Step 1a: Extract PG to MinIO (DLT)
+2026-04-20 15:32:58,268 - INFO - ============================================================
+2026-04-20 15:32:58,268 - INFO - Insurance Company Data Pipeline
+2026-04-20 15:32:58,268 - INFO - ============================================================
+2026-04-20 15:32:58,268 - INFO - 
+>>> Step 0: Download Kaggle data
+2026-04-20 15:32:58,268 - INFO - ------------------------------------------------------------
+2026-04-20 15:32:58,268 - INFO - Running script: download_kaggle_data.py
+2026-04-20 15:32:58,567 - INFO - Script download_kaggle_data.py completed successfully
+2026-04-20 15:32:58,567 - INFO - 
+>>> Step 1a: Extract PG to MinIO (DLT)
+2026-04-20 15:32:58,567 - INFO - ------------------------------------------------------------
+2026-04-20 15:32:58,567 - INFO - Running script: dlt_pipeline.py
+2026-04-20 15:32:59,425 - ERROR - Script dlt_pipeline.py failed with exit code 1
+2026-04-20 15:32:59,425 - ERROR - Pipeline stopped at Step 1a: Extract PG to MinIO (DLT)
+2026-04-20 15:34:13,784 - INFO - ============================================================
+2026-04-20 15:34:13,785 - INFO - Insurance Company Data Pipeline
+2026-04-20 15:34:13,785 - INFO - ============================================================
+2026-04-20 15:34:13,785 - INFO - 
+>>> Step 0: Download Kaggle data
+2026-04-20 15:34:13,785 - INFO - ------------------------------------------------------------
+2026-04-20 15:34:13,785 - INFO - Running script: download_kaggle_data.py
+2026-04-20 15:34:14,307 - INFO - Script download_kaggle_data.py completed successfully
+2026-04-20 15:34:14,307 - INFO - 
+>>> Step 1a: Extract PG to MinIO (DLT)
+2026-04-20 15:34:14,307 - INFO - ------------------------------------------------------------
+2026-04-20 15:34:14,307 - INFO - Running script: dlt_pipeline.py
+2026-04-20 15:34:15,676 - ERROR - Script dlt_pipeline.py failed with exit code 1
+2026-04-20 15:34:15,676 - ERROR - Pipeline stopped at Step 1a: Extract PG to MinIO (DLT)
+2026-04-20 15:34:40,946 - INFO - ============================================================
+2026-04-20 15:34:40,946 - INFO - Insurance Company Data Pipeline
+2026-04-20 15:34:40,946 - INFO - ============================================================
+2026-04-20 15:34:40,946 - INFO - 
+>>> Step 0: Download Kaggle data
+2026-04-20 15:34:40,946 - INFO - ------------------------------------------------------------
+2026-04-20 15:34:40,946 - INFO - Running script: download_kaggle_data.py
+2026-04-20 15:34:41,451 - INFO - Script download_kaggle_data.py completed successfully
+2026-04-20 15:34:41,452 - INFO - 
+>>> Step 1a: Extract PG to MinIO (DLT)
+2026-04-20 15:34:41,452 - INFO - ------------------------------------------------------------
+2026-04-20 15:34:41,452 - INFO - Running script: dlt_pipeline.py
+2026-04-20 15:34:43,916 - INFO - Script dlt_pipeline.py completed successfully
+2026-04-20 15:34:43,916 - INFO - 
+>>> Step 1b: Extract Kaggle to MinIO
+2026-04-20 15:34:43,916 - INFO - ------------------------------------------------------------
+2026-04-20 15:34:43,916 - INFO - Running script: load_kaggle_to_minio.py
+2026-04-20 15:34:44,347 - INFO - Script load_kaggle_to_minio.py completed successfully
+2026-04-20 15:34:44,347 - INFO - 
+>>> Step 2: Transform Raw to Silver (Python)
+2026-04-20 15:34:44,347 - INFO - ------------------------------------------------------------
+2026-04-20 15:34:44,347 - INFO - Running script: silver_transform.py
+2026-04-20 15:34:45,165 - INFO - Script silver_transform.py completed successfully
+2026-04-20 15:34:45,165 - INFO - 
+>>> Step 2.5: Load Silver to ClickHouse
+2026-04-20 15:34:45,165 - INFO - ------------------------------------------------------------
+2026-04-20 15:34:45,165 - INFO - Running script: load_silver_to_clickhouse.py
+2026-04-20 15:34:45,888 - INFO - Script load_silver_to_clickhouse.py completed successfully
+2026-04-20 15:34:45,888 - INFO - 
+>>> Step 3: DBT Gold Aggregations
+2026-04-20 15:34:45,897 - WARNING - DBT failed ([Errno 2] No such file or directory: 'dbt'), falling back to direct ClickHouse queries...
+2026-04-20 15:34:45,999 - INFO - Fallback gold aggregations completed successfully via direct SQL
+2026-04-20 15:34:45,999 - INFO - 
+============================================================
+2026-04-20 15:34:45,999 - INFO - PIPELINE COMPLETED SUCCESSFULLY!
+2026-04-20 15:34:45,999 - INFO - ============================================================
+2026-04-20 15:34:56,217 - INFO - ============================================================
+2026-04-20 15:34:56,217 - INFO - Insurance Company Data Pipeline
+2026-04-20 15:34:56,217 - INFO - ============================================================
+2026-04-20 15:34:56,217 - INFO - 
+>>> Step 0: Download Kaggle data
+2026-04-20 15:34:56,217 - INFO - ------------------------------------------------------------
+2026-04-20 15:34:56,217 - INFO - Running script: download_kaggle_data.py
+2026-04-20 15:34:56,503 - INFO - Script download_kaggle_data.py completed successfully
+2026-04-20 15:34:56,503 - INFO - 
+>>> Step 1a: Extract PG to MinIO (DLT)
+2026-04-20 15:34:56,503 - INFO - ------------------------------------------------------------
+2026-04-20 15:34:56,503 - INFO - Running script: dlt_pipeline.py
+2026-04-20 15:34:58,058 - INFO - Script dlt_pipeline.py completed successfully
+2026-04-20 15:34:58,058 - INFO - 
+>>> Step 1b: Extract Kaggle to MinIO
+2026-04-20 15:34:58,058 - INFO - ------------------------------------------------------------
+2026-04-20 15:34:58,058 - INFO - Running script: load_kaggle_to_minio.py
+2026-04-20 15:34:58,497 - INFO - Script load_kaggle_to_minio.py completed successfully
+2026-04-20 15:34:58,498 - INFO - 
+>>> Step 2: Transform Raw to Silver (Python)
+2026-04-20 15:34:58,498 - INFO - ------------------------------------------------------------
+2026-04-20 15:34:58,498 - INFO - Running script: silver_transform.py
+2026-04-20 15:34:59,347 - INFO - Script silver_transform.py completed successfully
+2026-04-20 15:34:59,348 - INFO - 
+>>> Step 2.5: Load Silver to ClickHouse
+2026-04-20 15:34:59,348 - INFO - ------------------------------------------------------------
+2026-04-20 15:34:59,348 - INFO - Running script: load_silver_to_clickhouse.py
+2026-04-20 15:35:00,101 - INFO - Script load_silver_to_clickhouse.py completed successfully
+2026-04-20 15:35:00,101 - INFO - 
+>>> Step 3: DBT Gold Aggregations
+2026-04-20 15:35:00,103 - WARNING - DBT failed ([Errno 2] No such file or directory: 'dbt'), falling back to direct ClickHouse queries...
+2026-04-20 15:35:00,207 - INFO - Fallback gold aggregations completed successfully via direct SQL
+2026-04-20 15:35:00,207 - INFO - 
+============================================================
+2026-04-20 15:35:00,207 - INFO - PIPELINE COMPLETED SUCCESSFULLY!
+2026-04-20 15:35:00,207 - INFO - ============================================================

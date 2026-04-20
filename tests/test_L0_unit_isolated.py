@@ -168,7 +168,7 @@ class TestConfig:
 
     def test_postgres_defaults(self):
         assert Config.POSTGRES_HOST == "localhost"
-        assert Config.POSTGRES_PORT == 5432
+        assert Config.POSTGRES_PORT == 5435
 
     def test_minio_defaults(self):
         assert Config.MINIO_ENDPOINT == "localhost:9900"

@@ -27,7 +27,7 @@ func getEnvInt(key string, defaultValue int) int {
 
 func getDBConfig() (host string, port int, user, password, dbname string) {
 	host = getEnv("POSTGRES_HOST", "localhost")
-	port = getEnvInt("POSTGRES_PORT", 5432)
+	port = getEnvInt("POSTGRES_PORT", 5435)
 	user = getEnv("POSTGRES_USER", "insurance_user")
 	password = getEnv("POSTGRES_PASSWORD", "insurance_pass")
 	dbname = getEnv("POSTGRES_DB", "insurance_db")

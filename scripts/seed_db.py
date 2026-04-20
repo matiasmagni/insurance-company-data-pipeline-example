@@ -8,7 +8,7 @@ from datetime import datetime, timedelta
 def seed_db():
     conn = psycopg2.connect(
         host=os.getenv("POSTGRES_HOST", "localhost"),
-        port=int(os.getenv("POSTGRES_PORT", "5432")),
+        port=int(os.getenv("POSTGRES_PORT", "5435")),
         user=os.getenv("POSTGRES_USER", "insurance_user"),
         password=os.getenv("POSTGRES_PASSWORD", "insurance_pass"),
         database=os.getenv("POSTGRES_DB", "insurance_db"),

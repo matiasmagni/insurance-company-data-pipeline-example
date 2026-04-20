@@ -31,7 +31,7 @@ CLICKHOUSE_CONFIG = {
 
 POSTGRES_CONFIG = {
     "host": os.getenv("POSTGRES_HOST", "localhost"),
-    "port": int(os.getenv("POSTGRES_PORT", "5432")),
+    "port": int(os.getenv("POSTGRES_PORT", "5435")),
     "database": os.getenv("POSTGRES_DB", "insurance_db"),
     "user": os.getenv("POSTGRES_USER", "insurance_user"),
     "password": os.getenv("POSTGRES_PASSWORD", "insurance_pass"),
