@@ -22,16 +22,20 @@ A production-grade data lakehouse pipeline demonstrating modern ELT/ETL architec
 1. [Architecture Overview](#1-architecture-overview)
 2. [Data Flow Diagram](#2-data-flow-diagram)
 3. [Infrastructure Components](#3-infrastructure-components)
-4. [Project Structure](#4-project-structure)
-5. [Test Pyramid](#5-test-pyramid)
-6. [Quick Start](#6-quick-start)
-7. [Database Connections](#7-database-connections)
-8. [Running Tests](#8-running-tests)
-9. [SQL Examples](#9-sql-examples)
-10. [Environment Variables](#10-environment-variables)
-11. [Troubleshooting](#11-troubleshooting)
-12. [License](#12-license)
-13. [Author](#13-author)
+4. [Raw Data Schema](#4-raw-data-schema)
+   - [4.1 PostgreSQL Raw Tables](#41-postgresql-raw-tables)
+   - [4.2 Kaggle CSV Schema](#42-kaggle-csv-schema)
+   - [4.3 Data Mapping](#43-data-mapping)
+5. [Project Structure](#5-project-structure)
+6. [Test Pyramid](#6-test-pyramid)
+7. [Quick Start](#7-quick-start)
+8. [Database Connections](#8-database-connections)
+9. [Running Tests](#9-running-tests)
+10. [SQL Examples](#10-sql-examples)
+11. [Environment Variables](#11-environment-variables)
+12. [Troubleshooting](#12-troubleshooting)
+13. [License](#13-license)
+14. [Author](#14-author)
 
 ---
 
@@ -134,7 +138,131 @@ graph TB
 
 ---
 
-## 4. Project Structure
+## 4. Raw Data Schema
+
+This section documents the schema of the raw data sources.
+
+### 4.1. PostgreSQL Raw Tables
+
+The PostgreSQL database contains the following tables:
+
+#### customers (Table Schema)
+
+| Column | Type | Description |
+|-------|------|-------------|
+| `customer_id` | SERIAL | Primary key |
+| `first_name` | VARCHAR(100) | Customer first name |
+| `last_name` | VARCHAR(100) | Customer last name |
+| `email` | VARCHAR(255) | Unique email address |
+| `phone_number` | VARCHAR(20) | Phone number |
+| `date_of_birth` | DATE | Date of birth |
+| `address` | VARCHAR(255) | Street address |
+| `city` | VARCHAR(100) | City |
+| `state` | VARCHAR(2) | State code (e.g., "NY") |
+| `zip_code` | VARCHAR(10) | ZIP code |
+| `country` | VARCHAR(100) | Country (default: "USA") |
+| `credit_score` | INTEGER | Credit score (500-850) |
+| `annual_income` | DECIMAL(12,2) | Annual income |
+| `occupation` | VARCHAR(100) | Occupation |
+| `created_at` | TIMESTAMP | Creation timestamp |
+| `updated_at` | TIMESTAMP | Last update timestamp |
+
+**Sample Row:**
+```
+customer_id | first_name | last_name | email                     | credit_score | annual_income | occupation
+------------|------------|-----------|---------------------------|--------------|---------------|------------------
+1           | James      | Smith     | james.smith0@example.com  | 750          | 75000.00      | Software Engineer
+```
+
+#### claims (Table Schema)
+
+| Column | Type | Description |
+|-------|------|-------------|
+| `claim_id` | SERIAL | Primary key |
+| `customer_id` | INTEGER | Foreign key to customers |
+| `claim_date` | DATE | Date of claim |
+| `claim_type` | VARCHAR(50) | Type: Auto, Home, Life, Health, Property |
+| `claim_status` | VARCHAR(20) | Status: Open, Closed, Pending, Denied, Investigation |
+| `claim_amount` | DECIMAL(12,2) | Claim amount |
+| `claim_paid_amount` | DECIMAL(12,2) | Amount paid |
+| `vehicle_type` | VARCHAR(20) | Vehicle type: Sedan, SUV, Truck, etc. |
+| `agent_id` | INTEGER | Agent ID |
+| `agent_name` | VARCHAR(100) | Agent name |
+| `created_at` | TIMESTAMP | Creation timestamp |
+| `updated_at` | TIMESTAMP | Last update timestamp |
+
+**Sample Row:**
+```
+claim_id | customer_id | claim_date | claim_type | claim_status | claim_amount | vehicle_type | agent_name
+---------|-------------|------------|------------|---------------|--------------|--------------|-------------
+1        | 1           | 2024-01-15 | Auto       | Open          | 5000.00      | Sedan        | Agent Smith
+```
+
+### 4.2. Kaggle CSV Schema
+
+The Kaggle dataset (`buntystas/vehicle-claims-data`) contains:
+
+#### customer_profiles.csv (Schema)
+
+| Column | Type | Description |
+|-------|------|-------------|
+| `customer_id` | STRING | Customer ID (e.g., "CUST000001") |
+| `name` | STRING | Full name |
+| `email` | STRING | Email address |
+| `credit_score` | INTEGER | Credit score (500-850) |
+| `telematics_score` | INTEGER | Telematics score (0-100) |
+| `policy_number` | STRING | Policy number |
+
+**Sample:**
+```
+customer_id,name,email,credit_score,telematics_score,policy_number
+CUST000001,John Smith,john.smith1@email.com,750,85,POL000001
+```
+
+#### vehicle_insurance_claims.csv (Schema)
+
+| Column | Type | Description |
+|-------|------|-------------|
+| `claim_id` | STRING | Claim ID (e.g., "CLM00000001") |
+| `policy_number` | STRING | Policy number |
+| `claim_date` | DATE | Date of claim |
+| `claim_amount` | DECIMAL | Claim amount |
+| `claim_type` | STRING | Type: Collision, Comprehensive, Liability, etc. |
+| `claim_status` | STRING | Status: Approved, Pending, Rejected, Under Review |
+| `vehicle_type` | STRING | Vehicle type |
+| `driver_age` | INTEGER | Driver age (18-75) |
+| `fraud_indicator` | STRING | Fraud indicator: Y/N |
+| `deductible` | INTEGER | Deductible amount |
+| `city` | STRING | City |
+| `accident_type` | STRING | Accident type |
+
+**Sample:**
+```
+claim_id,policy_number,claim_date,claim_amount,claim_type,claim_status,vehicle_type,driver_age,fraud_indicator,deductible,city,accident_type
+CLM00000001,POL000001,2024-01-15,5000.00,Collision,Approved,Sedan,35,N,500,Los Angeles,Rear-end
+```
+
+### 4.3. Data Mapping (PostgreSQL ↔ Kaggle)
+
+| PostgreSQL Field | Kaggle CSV Field | Notes |
+|-----------------|------------------|-------|
+| `customer_id` | `customer_id` | Different format (INT vs STRING) |
+| `first_name + last_name` | `name` | Concatenated in Kaggle |
+| `email` | `email` | Same |
+| `credit_score` | `credit_score` | Same |
+| `claim_id` | `claim_id` | Different format |
+| `customer_id` | `policy_number` | References customer |
+| `claim_date` | `claim_date` | Same |
+| `claim_amount` | `claim_amount` | Same |
+| `claim_type` | `claim_type` | Similar (Auto vs Collision) |
+| `claim_status` | `claim_status` | Different values |
+| `vehicle_type` | `vehicle_type` | Same |
+| N/A | `driver_age` | Not in PostgreSQL |
+| N/A | `fraud_indicator` | Not in PostgreSQL |
+
+---
+
+## 5. Project Structure
 
 ```
 insurance-company-data-pipeline-example/
@@ -143,7 +271,7 @@ insurance-company-data-pipeline-example/
 ├── README.md                    # This file
 │
 ├── scripts/                    # Python/Go scripts
-│   ├── synthetic_data_generator.go  # Go data generator (1000 customers, 5000 claims)
+│   ├── synthetic_data_generator.go  # Go data generator (1000 customers, 5000 claims) - PostgreSQL ONLY
 │   ├── dlt_pipeline.py             # DLT pipeline: PostgreSQL → MinIO raw
 │   ├── download_kaggle_data.py     # Download Kaggle insurance dataset
 │   └── reset_database.go           # Reset PostgreSQL and regenerate data
@@ -216,7 +344,7 @@ style L0 fill:#ffeb3b,color:#000,stroke:#333,stroke-width:2px
 
 ---
 
-## 6. Quick Start
+## 7. Quick Start
 
 ### 6.1. Start Infrastructure
 
@@ -257,7 +385,7 @@ cd dbt && dbt run                  # MinIO raw → MinIO silver → ClickHouse g
 
 ---
 
-## 7. Database Connections
+## 8. Database Connections
 
 ### 7.1. PostgreSQL (Raw Source)
 
@@ -318,7 +446,7 @@ s3://insurance-data/
 
 ---
 
-## 8. Running Tests
+## 9. Running Tests
 
 ### 8.1. Unix/Linux/macOS
 
@@ -361,9 +489,9 @@ pytest tests/test_L3_e2e.py -v
 
 ---
 
-## 9. SQL Examples
+## 10. SQL Examples
 
-### 9.1. ClickHouse Gold Layer
+### 10.1. ClickHouse Gold Layer
 
 All tables in ClickHouse are accessed **without** schema prefix:
 
@@ -403,7 +531,7 @@ ORDER BY customer_count DESC;
 
 ---
 
-## 10. Environment Variables
+## 11. Environment Variables
 
 Create a `.env` file in the project root:
 
@@ -426,9 +554,9 @@ CLICKHOUSE_PASSWORD=clickhouse_pass
 
 ---
 
-## 11. Troubleshooting
+## 12. Troubleshooting
 
-### 11.1. Check MinIO Console
+### 12.1. Check MinIO Console
 
 1. Open http://localhost:9901 in browser
 2. Login with: minioadmin / minioadmin
@@ -460,13 +588,13 @@ docker exec -it insurance_postgres psql -U insurance_user -d insurance_db
 
 ---
 
-## 12. License
+## 13. License
 
 Copyright (c) 2026 BugMentor (https://bugmentor.com)
 
 ---
 
-## 13. Author
+## 14. Author
 
 **Eng. Matías J. Magni**  
 CEO @ BugMentor  
