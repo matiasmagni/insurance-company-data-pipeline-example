@@ -269,6 +269,116 @@ CLM00000001,POL000001,2024-01-15,5000.00,Collision,Approved,Sedan,35,N,500,Los A
 | N/A | `driver_age` | Not in PostgreSQL |
 | N/A | `fraud_indicator` | Not in PostgreSQL |
 
+### 4.4. Silver Layer Schema
+
+The **Silver** layer transforms raw data and stores it in MinIO as Parquet files.
+
+#### silver_customers (View Schema)
+
+| Column | Type | Description |
+|-------|------|-------------|
+| `customer_id` | INTEGER | Primary key |
+| `first_name` | VARCHAR(100) | Customer first name |
+| `last_name` | VARCHAR(100) | Customer last name |
+| `email` | VARCHAR(255) | Email address |
+| `phone_number` | VARCHAR(20) | Phone number |
+| `date_of_birth` | DATE | Date of birth |
+| `address` | VARCHAR(255) | Street address |
+| `city` | VARCHAR(100) | City |
+| `state` | VARCHAR(2) | State code |
+| `zip_code` | VARCHAR(10) | ZIP code |
+| `country` | VARCHAR(100) | Country |
+| `credit_score` | INTEGER | Credit score (500-850) |
+| `annual_income` | DECIMAL(12,2) | Annual income |
+| `occupation` | VARCHAR(100) | Occupation |
+| `created_at` | TIMESTAMP | Creation timestamp |
+| `updated_at` | TIMESTAMP | Last update timestamp |
+| **`risk_bucket`** | VARCHAR(20) | NEW: Risk category based on credit score |
+
+**Risk Bucket Logic:**
+```
+- Excellent: credit_score >= 750
+- Good:      credit_score >= 700
+- Fair:     credit_score >= 650
+- Poor:     credit_score < 650
+```
+
+#### silver_claims (View Schema)
+
+| Column | Type | Description |
+|-------|------|-------------|
+| `claim_id` | INTEGER | Primary key |
+| `customer_id` | INTEGER | Foreign key |
+| `claim_date` | DATE | Date of claim |
+| `claim_type` | VARCHAR(50) | Type: Auto, Home, Life, Health, Property |
+| `claim_status` | VARCHAR(20) | Status: Open, Closed, Pending, Denied, Investigation |
+| `claim_amount` | DECIMAL(12,2) | Claim amount |
+| `claim_paid_amount` | DECIMAL(12,2) | Amount paid |
+| `vehicle_type` | VARCHAR(20) | Vehicle type |
+| `agent_id` | INTEGER | Agent ID |
+| `agent_name` | VARCHAR(100) | Agent name |
+| `created_at` | TIMESTAMP | Creation timestamp |
+| `updated_at` | TIMESTAMP | Last update timestamp |
+| **`claim_status_category`** | VARCHAR(20) | NEW: Simplified status |
+| **`vehicle_category`** | VARCHAR(20) | NEW: Vehicle group |
+
+**Status Category Logic:**
+```
+- Closed:  claim_status = 'Closed'
+- Denied:  claim_status = 'Denied'
+- Open:    claim_status = 'Open'
+- Other:   All other statuses
+```
+
+**Vehicle Category Logic:**
+```
+- Car:        Sedan, Coupe, Wagon
+- SUV:         SUV
+- Truck:       Truck
+- Motorcycle:  Motorcycle
+- Other:       All other types
+```
+
+### 4.5. Gold Layer Schema
+
+The **Gold** layer contains aggregated analytics tables in ClickHouse (no schema prefix).
+
+#### gold_customers (Table Schema)
+
+Direct copy of `silver_customers` view with all columns.
+
+#### gold_claims (Table Schema)
+
+Direct copy of `silver_claims` view with all columns.
+
+#### gold_claims_by_status (Aggregation)
+
+| Column | Type | Description |
+|-------|------|-------------|
+| `status` | VARCHAR(20) | Claim status |
+| `claim_count` | INTEGER | Count of claims |
+| `total_claim_amount` | DECIMAL(12,2) | Sum of all claim amounts |
+| `total_paid_amount` | DECIMAL(12,2) | Sum of all paid amounts |
+| `avg_claim_amount` | DECIMAL(12,2) | Average claim amount |
+| `avg_paid_amount` | DECIMAL(12,2) | Average paid amount |
+
+**Sample:**
+```sql
+SELECT * FROM claims_by_status;
+-- status  | claim_count | total_claim_amount | total_paid_amount
+-- Closed   | 2000       | 15000000.00        | 12000000.00
+-- Open     | 1500       | 8000000.00         | 0.00
+-- Denied   | 500        | 3000000.00         | 0.00
+```
+
+#### gold_claims_by_agent (Aggregation)
+
+Aggregated by agent with totals and averages.
+
+#### gold_claims_by_business_line (Aggregation)
+
+Aggregated by vehicle category (Car, SUV, Truck, Motorcycle).
+
 ---
 
 ## 5. Project Structure
