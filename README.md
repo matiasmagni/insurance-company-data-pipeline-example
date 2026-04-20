@@ -48,12 +48,13 @@ Eng. Matías J. Magni | CEO @ BugMentor
 
 ## 1. Architecture Overview
 
-This project implements a **three-tier data lakehouse architecture**:
+This project implements a **three-tier data lakehouse architecture** with **two raw data sources**:
 
 ```mermaid
 graph LR
     subgraph "Layer 1: RAW SOURCE"
         PG[("PostgreSQL\nport 5432")]
+        KG[("Kaggle CSV\ncustomer_profiles.csv")]
     end
     
     subgraph "Layer 2: STORAGE (MinIO)"
@@ -68,7 +69,8 @@ graph LR
     DLT[DLT Pipeline]
     DBT[DBT Transformations]
     
-    PG -->|1. Extract| DLT
+    PG -->|1a. Extract| DLT
+    KG -->|1b. Extract| DLT
     DLT -->|2. Load Parquet| RAW
     RAW -->|3. Transform| DBT
     DBT -->|4. Write Parquet| SIL
@@ -82,8 +84,12 @@ graph LR
 
 ```mermaid
 flowchart TB
-    subgraph "STEP 1: Generate Source Data"
+    subgraph "STEP 1a: PostgreSQL Source"
         A[go run scripts/synthetic_data_generator.go] --> B[(PostgreSQL\ncustomers & claims)]
+    end
+    
+    subgraph "STEP 1b: Kaggle CSV Source"
+        K1[python scripts/download_kaggle_data.py] --> K2[(Kaggle CSV\ncustomer_profiles.csv\nvehicle_insurance_claims.csv)]
     end
     
     subgraph "STEP 2: Extract & Load to Raw"
@@ -104,11 +110,14 @@ flowchart TB
     end
     
     B --> C
+    K2 --> C
     D --> F
     E --> F
     G --> I
     H --> I
 ```
+
+**Note:** The pipeline supports **two raw data sources**: PostgreSQL (primary) and Kaggle CSV (alternative). Both feed into the same MinIO raw layer.
 
 ---
 
