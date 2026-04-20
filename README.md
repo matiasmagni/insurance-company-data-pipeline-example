@@ -17,6 +17,24 @@ A production-grade data lakehouse pipeline demonstrating modern ELT/ETL architec
 
 ---
 
+## Table of Contents
+
+1. [Architecture Overview](#1-architecture-overview)
+2. [Data Flow Diagram](#2-data-flow-diagram)
+3. [Infrastructure Components](#3-infrastructure-components)
+4. [Project Structure](#4-project-structure)
+5. [Test Pyramid](#5-test-pyramid)
+6. [Quick Start](#6-quick-start)
+7. [Database Connections](#7-database-connections)
+8. [Running Tests](#8-running-tests)
+9. [SQL Examples](#9-sql-examples)
+10. [Environment Variables](#10-environment-variables)
+11. [Troubleshooting](#11-troubleshooting)
+12. [License](#12-license)
+13. [Author](#13-author)
+
+---
+
 ```
 Copyright (c) 2026 BugMentor (https://bugmentor.com)
 Eng. Matías J. Magni | CEO @ BugMentor
@@ -24,7 +42,7 @@ Eng. Matías J. Magni | CEO @ BugMentor
 
 ---
 
-## Architecture Overview
+## 1. Architecture Overview
 
 This project implements a **three-tier data lakehouse architecture**:
 
@@ -56,12 +74,12 @@ graph LR
 
 ---
 
-## Data Flow Diagram
+## 2. Data Flow Diagram
 
 ```mermaid
 flowchart TB
     subgraph "STEP 1: Generate Source Data"
-        A[go run synthetic_data_generator.go] --> B[(PostgreSQL\ncustomers & claims)]
+        A[go run scripts/synthetic_data_generator.go] --> B[(PostgreSQL\ncustomers & claims)]
     end
     
     subgraph "STEP 2: Extract & Load to Raw"
@@ -90,7 +108,7 @@ flowchart TB
 
 ---
 
-## Infrastructure Components
+## 3. Infrastructure Components
 
 ```mermaid
 graph TB
@@ -116,25 +134,25 @@ graph TB
 
 ---
 
-## Project Structure
+## 4. Project Structure
 
 ```
 insurance-company-data-pipeline-example/
 ├── docker-compose.yml           # Infrastructure orchestration
-├── pipeline.py                 # Main pipeline runner (DLT + DBT)
-├── synthetic_data_generator.go # Go-based synthetic data generator
-├── README.md                   # This file
+├── pipeline.py                  # Main pipeline runner (DLT + DBT)
+├── README.md                    # This file
 │
 ├── scripts/                    # Python/Go scripts
-│   ├── dlt_pipeline.py         # DLT pipeline: PostgreSQL → MinIO raw
-│   ├── download_kaggle_data.py # Download Kaggle insurance dataset
-│   └── reset_database.go      # Reset PostgreSQL and regenerate data
+│   ├── synthetic_data_generator.go  # Go data generator (1000 customers, 5000 claims)
+│   ├── dlt_pipeline.py             # DLT pipeline: PostgreSQL → MinIO raw
+│   ├── download_kaggle_data.py     # Download Kaggle insurance dataset
+│   └── reset_database.go           # Reset PostgreSQL and regenerate data
 │
-├── dbt/                      # DBT project
+├── dbt/                        # DBT project
 │   ├── dbt_project.yml
 │   ├── profiles.yml
 │   └── models/
-│       ├── sources.yml        # MinIO source definitions
+│       ├── sources.yml           # MinIO source definitions
 │       ├── silver/
 │       │   ├── silver_customers.sql
 │       │   └── silver_claims.sql
@@ -145,30 +163,30 @@ insurance-company-data-pipeline-example/
 │           ├── gold_claims_by_agent.sql
 │           └── gold_claims_by_business_line.sql
 │
-├── scripts_unix/              # Unix test runners
-│   ├── run_l0_tests.sh        # Unit tests isolated
-│   ├── run_l1_tests.sh        # Unit tests integrated
-│   ├── run_l2_tests.sh        # Integration tests
-│   ├── run_l3_tests.sh        # E2E tests
-│   └── run_all_tests.sh      # Run all tests
+├── scripts_unix/                # Unix test runners
+│   ├── run_l0_tests.sh          # Unit tests isolated
+│   ├── run_l1_tests.sh          # Unit tests integrated
+│   ├── run_l2_tests.sh          # Integration tests
+│   ├── run_l3_tests.sh          # E2E tests
+│   └── run_all_tests.sh         # Run all tests
 │
-├── scripts_windows/            # Windows test runners
-│   ├── run_l0_tests.bat       # Unit tests isolated
-│   ├── run_l1_tests.bat       # Unit tests integrated
-│   ├── run_l2_tests.bat       # Integration tests
-│   ├── run_l3_tests.bat       # E2E tests
-│   └── run_all_tests.bat     # Run all tests
+├── scripts_windows/             # Windows test runners
+│   ├── run_l0_tests.bat        # Unit tests isolated
+│   ├── run_l1_tests.bat        # Unit tests integrated
+│   ├── run_l2_tests.bat        # Integration tests
+│   ├── run_l3_tests.bat        # E2E tests
+│   └── run_all_tests.bat       # Run all tests
 │
-└── tests/                     # Test suite
-    ├── test_L0_unit_isolated.py    # L0: Isolated unit tests
-    ├── test_L1_unit_integrated.py  # L1: Integrated unit tests
-    ├── test_L2_integration.py       # L2: Integration tests
-    └── test_L3_e2e.py              # L3: End-to-end tests
+└── tests/                      # Test suite (77 tests)
+    ├── test_L0_unit_isolated.py    # L0: Isolated unit tests (30)
+    ├── test_L1_unit_integrated.py  # L1: Integrated unit tests (18)
+    ├── test_L2_integration.py     # L2: Integration tests (19)
+    └── test_L3_e2e.py           # L3: End-to-end tests (10)
 ```
 
 ---
 
-## Test Pyramid
+## 5. Test Pyramid
 
 This project follows the **test pyramid** methodology with four levels of testing:
 
@@ -187,7 +205,7 @@ style L1 fill:#ffc107,color:#000,stroke:#333,stroke-width:2px
 style L0 fill:#ffeb3b,color:#000,stroke:#333,stroke-width:2px
 ```
 
-### Test Levels Description
+### 5.1. Test Levels Description
 
 | Level | Name | Description |
 |-------|------|-------------|
@@ -198,9 +216,9 @@ style L0 fill:#ffeb3b,color:#000,stroke:#333,stroke-width:2px
 
 ---
 
-## Quick Start
+## 6. Quick Start
 
-### Step 1: Start Infrastructure
+### 6.1. Start Infrastructure
 
 ```bash
 docker-compose up -d
@@ -209,14 +227,14 @@ docker-compose up -d
 docker-compose ps
 ```
 
-### Step 2: Generate Source Data
+### 6.2. Generate Source Data
 
 ```bash
 # Using Go synthetic data generator (1000 customers, 5000 claims)
-go run synthetic_data_generator.go
+go run scripts/synthetic_data_generator.go
 ```
 
-### Step 3: Reset & Regenerate Database
+### 6.3. Reset & Regenerate Database
 
 ```bash
 # Reset database (truncate all tables)
@@ -226,7 +244,7 @@ go run scripts/reset_database.go
 go run scripts/reset_database.go --regenerate
 ```
 
-### Step 4: Run Pipeline
+### 6.4. Run Pipeline
 
 ```bash
 # Run full pipeline: PostgreSQL → MinIO (raw) → MinIO (silver) → ClickHouse (gold)
@@ -234,14 +252,14 @@ python pipeline.py
 
 # Or run steps individually:
 python scripts/dlt_pipeline.py       # PostgreSQL → MinIO raw
-cd dbt && dbt run              # MinIO raw → MinIO silver → ClickHouse gold
+cd dbt && dbt run                  # MinIO raw → MinIO silver → ClickHouse gold
 ```
 
 ---
 
-## Database Connections
+## 7. Database Connections
 
-### PostgreSQL (Raw Source)
+### 7.1. PostgreSQL (Raw Source)
 
 | Parameter | Value |
 |-----------|-------|
@@ -255,7 +273,7 @@ cd dbt && dbt run              # MinIO raw → MinIO silver → ClickHouse gold
 - `public.customers` - Customer profiles (1,000 rows)
 - `public.claims` - Insurance claims (5,000 rows)
 
-### MinIO (Raw + Silver Layers)
+### 7.2. MinIO (Raw + Silver Layers)
 
 | Parameter | Value |
 |-----------|-------|
@@ -281,7 +299,7 @@ s3://insurance-data/
         └── claims_with_agents.parquet
 ```
 
-### ClickHouse (Gold Layer)
+### 7.3. ClickHouse (Gold Layer)
 
 | Parameter | Value |
 |-----------|-------|
@@ -300,9 +318,9 @@ s3://insurance-data/
 
 ---
 
-## Running Tests
+## 8. Running Tests
 
-### Unix/Linux/macOS
+### 8.1. Unix/Linux/macOS
 
 ```bash
 # Run all tests
@@ -311,11 +329,11 @@ s3://insurance-data/
 # Run specific test levels
 ./scripts_unix/run_l0_tests.sh   # Unit tests - isolated
 ./scripts_unix/run_l1_tests.sh   # Unit tests - integrated
-./scripts_unix/run_l2_tests.sh   # Integration tests
-./scripts_unix/run_l3_tests.sh   # End-to-end tests
+./scripts_unix/run_l2_tests.sh  # Integration tests
+./scripts_unix/run_l3_tests.sh  # End-to-end tests
 ```
 
-### Windows
+### 8.2. Windows
 
 ```cmd
 REM Run all tests
@@ -324,11 +342,11 @@ scripts_windows\run_all_tests.bat
 REM Run specific test levels
 scripts_windows\run_l0_tests.bat   -- Unit tests - isolated
 scripts_windows\run_l1_tests.bat   -- Unit tests - integrated
-scripts_windows\run_l2_tests.bat   -- Integration tests
+scripts_windows\run_l2_tests.bat  -- Integration tests
 scripts_windows\run_l3_tests.bat   -- End-to-end tests
 ```
 
-### Direct pytest
+### 8.3. Direct pytest
 
 ```bash
 # Run all tests
@@ -343,9 +361,9 @@ pytest tests/test_L3_e2e.py -v
 
 ---
 
-## SQL Examples
+## 9. SQL Examples
 
-### ClickHouse Gold Layer
+### 9.1. ClickHouse Gold Layer
 
 All tables in ClickHouse are accessed **without** schema prefix:
 
@@ -385,7 +403,7 @@ ORDER BY customer_count DESC;
 
 ---
 
-## Environment Variables
+## 10. Environment Variables
 
 Create a `.env` file in the project root:
 
@@ -408,15 +426,15 @@ CLICKHOUSE_PASSWORD=clickhouse_pass
 
 ---
 
-## Troubleshooting
+## 11. Troubleshooting
 
-### Check MinIO Console
+### 11.1. Check MinIO Console
 
 1. Open http://localhost:9901 in browser
 2. Login with: minioadmin / minioadmin
 3. Verify bucket `insurance-data` exists with `raw/` and `silver/` folders
 
-### Check ClickHouse
+### 11.2. Check ClickHouse
 
 ```bash
 # Using clickhouse-client
@@ -428,27 +446,27 @@ SHOW TABLES;
 -- Should show: customers, claims, claims_by_status, claims_by_agent, claims_by_business_line
 ```
 
-### Check PostgreSQL
+### 11.3. Check PostgreSQL
 
 ```bash
 # Connect to PostgreSQL
 docker exec -it insurance_postgres psql -U insurance_user -d insurance_db
 
 -- Check tables
-\dt
+/dt
 
 -- Should show: customers, claims
 ```
 
 ---
 
-## License
+## 12. License
 
 Copyright (c) 2026 BugMentor (https://bugmentor.com)
 
 ---
 
-## Author
+## 13. Author
 
 **Eng. Matías J. Magni**  
 CEO @ BugMentor  
