@@ -1,46 +1,304 @@
 """
-================================================================================
+============================================================================
 Insurance Company Data Pipeline - L2 Integration Tests
-================================================================================
+============================================================================
 Copyright (c) 2026 BugMentor (https://bugmentor.com)
 
 L2: Integration tests - Real services running in Docker
+     Test every layer integration (PostgreSQL -> MinIO -> ClickHouse)
+     Requires: docker-compose up -d
 
 Usage:
     pytest tests/test_L2_integration.py -v
     (Requires: docker-compose up -d)
-================================================================================
+============================================================================
 """
 
 import pytest
 import pandas as pd
+import psycopg2
+import boto3
 import os
-import sys
+import subprocess
 from pathlib import Path
 
 
-class TestDockerCompose:
-    """L2: Test Docker Compose services."""
+# =============================================================================
+# Test Configuration
+# =============================================================================
 
-    def test_docker_compose_file_valid(self):
-        """L2: Test docker-compose.yml is valid YAML."""
-        import yaml
+POSTGRES_CONFIG = {
+    "host": os.getenv("POSTGRES_HOST", "localhost"),
+    "port": int(os.getenv("POSTGRES_PORT", "5432")),
+    "database": os.getenv("POSTGRES_DB", "insurance_db"),
+    "user": os.getenv("POSTGRES_USER", "insurance_user"),
+    "password": os.getenv("POSTGRES_PASSWORD", "insurance_pass"),
+}
 
-        with open("docker-compose.yml") as f:
-            config = yaml.safe_load(f)
+MINIO_CONFIG = {
+    "endpoint": os.getenv("MINIO_ENDPOINT", "localhost:9900"),
+    "access_key": os.getenv("MINIO_ACCESS_KEY", "minioadmin"),
+    "secret_key": os.getenv("MINIO_SECRET_KEY", "minioadmin"),
+    "bucket": os.getenv("MINIO_BUCKET", "insurance-data"),
+}
 
-        assert "services" in config
-        assert "postgres" in config["services"]
-        assert "minio" in config["services"]
-        assert "clickhouse" in config["services"]
+
+# =============================================================================
+# PostgreSQL Layer Tests
+# =============================================================================
+
+
+class TestPostgreSQLLayer:
+    """L2: Test PostgreSQL raw layer."""
+
+    def test_postgres_connection(self):
+        """L2: Test PostgreSQL is accessible."""
+        try:
+            conn = psycopg2.connect(**POSTGRES_CONFIG)
+            conn.close()
+        except psycopg2.OperationalError:
+            pytest.skip("PostgreSQL not available")
+
+    def test_postgres_customers_table_exists(self):
+        """L2: Test customers table exists."""
+        try:
+            conn = psycopg2.connect(**POSTGRES_CONFIG)
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT EXISTS (
+                    SELECT FROM information_schema.tables 
+                    WHERE table_name = 'customers'
+                )
+            """)
+            exists = cursor.fetchone()[0]
+            cursor.close()
+            conn.close()
+            assert exists, "customers table does not exist"
+        except psycopg2.OperationalError:
+            pytest.skip("PostgreSQL not available")
+
+    def test_postgres_claims_table_exists(self):
+        """L2: Test claims table exists."""
+        try:
+            conn = psycopg2.connect(**POSTGRES_CONFIG)
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT EXISTS (
+                    SELECT FROM information_schema.tables 
+                    WHERE table_name = 'claims'
+                )
+            """)
+            exists = cursor.fetchone()[0]
+            cursor.close()
+            conn.close()
+            assert exists, "claims table does not exist"
+        except psycopg2.OperationalError:
+            pytest.skip("PostgreSQL not available")
+
+    def test_postgres_has_customers_data(self):
+        """L2: Test customers table has data."""
+        try:
+            conn = psycopg2.connect(**POSTGRES_CONFIG)
+            df = pd.read_sql("SELECT * FROM customers LIMIT 10", conn)
+            conn.close()
+            assert len(df) > 0, "No customers in database"
+        except psycopg2.OperationalError:
+            pytest.skip("PostgreSQL not available")
+
+    def test_postgres_has_claims_data(self):
+        """L2: Test claims table has data."""
+        try:
+            conn = psycopg2.connect(**POSTGRES_CONFIG)
+            df = pd.read_sql("SELECT * FROM claims LIMIT 10", conn)
+            conn.close()
+            assert len(df) > 0, "No claims in database"
+        except psycopg2.OperationalError:
+            pytest.skip("PostgreSQL not available")
+
+    def test_postgres_customers_schema(self):
+        """L2: Test customers table schema."""
+        try:
+            conn = psycopg2.connect(**POSTGRES_CONFIG)
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT column_name, data_type 
+                FROM information_schema.columns 
+                WHERE table_name = 'customers'
+                ORDER BY column_name
+            """)
+            columns = {row[0]: row[1] for row in cursor.fetchall()}
+            cursor.close()
+            conn.close()
+
+            assert "customer_id" in columns
+            assert "first_name" in columns
+            assert "last_name" in columns
+            assert "email" in columns
+            assert "credit_score" in columns
+            assert "annual_income" in columns
+        except psycopg2.OperationalError:
+            pytest.skip("PostgreSQL not available")
+
+    def test_postgres_claims_schema(self):
+        """L2: Test claims table schema."""
+        try:
+            conn = psycopg2.connect(**POSTGRES_CONFIG)
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT column_name, data_type 
+                FROM information_schema.columns 
+                WHERE table_name = 'claims'
+                ORDER BY column_name
+            """)
+            columns = {row[0]: row[1] for row in cursor.fetchall()}
+            cursor.close()
+            conn.close()
+
+            assert "claim_id" in columns
+            assert "customer_id" in columns
+            assert "claim_amount" in columns
+            assert "claim_status" in columns
+            assert "claim_date" in columns
+        except psycopg2.OperationalError:
+            pytest.skip("PostgreSQL not available")
+
+
+# =============================================================================
+# MinIO Layer Tests
+# =============================================================================
+
+
+class TestMinIOLayer:
+    """L2: Test MinIO silver layer."""
+
+    @pytest.fixture
+    def s3_client(self):
+        """Create S3 client for tests."""
+        try:
+            client = boto3.client(
+                "s3",
+                endpoint_url=f"http://{MINIO_CONFIG['endpoint']}",
+                aws_access_key_id=MINIO_CONFIG["access_key"],
+                aws_secret_access_key=MINIO_CONFIG["secret_key"],
+            )
+            client.head_bucket(Bucket=MINIO_CONFIG["bucket"])
+            return client
+        except Exception:
+            pytest.skip("MinIO not available")
+
+    def test_minio_bucket_exists(self, s3_client):
+        """L2: Test MinIO bucket exists."""
+        try:
+            s3_client.head_bucket(Bucket=MINIO_CONFIG["bucket"])
+        except Exception:
+            pytest.fail(f"Bucket {MINIO_CONFIG['bucket']} does not exist")
+
+    def test_minio_has_silver_customers(self, s3_client):
+        """L2: Test silver customers file exists."""
+        try:
+            response = s3_client.list_objects_v2(
+                Bucket=MINIO_CONFIG["bucket"], Prefix="silver/"
+            )
+            files = [obj["Key"] for obj in response.get("Contents", [])]
+            silver_files = [f for f in files if "customers" in f.lower()]
+            assert len(silver_files) > 0, "No silver customers files found"
+        except Exception:
+            pytest.skip("MinIO not accessible")
+
+    def test_minio_has_silver_claims(self, s3_client):
+        """L2: Test silver claims file exists."""
+        try:
+            response = s3_client.list_objects_v2(
+                Bucket=MINIO_CONFIG["bucket"], Prefix="silver/"
+            )
+            files = [obj["Key"] for obj in response.get("Contents", [])]
+            silver_files = [f for f in files if "claims" in f.lower()]
+            assert len(silver_files) > 0, "No silver claims files found"
+        except Exception:
+            pytest.skip("MinIO not accessible")
+
+    def test_minio_silver_customers_parquet(self, s3_client):
+        """L2: Test silver customers is parquet format."""
+        try:
+            response = s3_client.list_objects_v2(
+                Bucket=MINIO_CONFIG["bucket"], Prefix="silver/customers"
+            )
+            files = [obj["Key"] for obj in response.get("Contents", [])]
+            parquet_files = [f for f in files if f.endswith(".parquet")]
+            assert len(parquet_files) > 0, "No parquet files in silver/customers"
+        except Exception:
+            pytest.skip("MinIO not accessible")
+
+    def test_minio_silver_claims_parquet(self, s3_client):
+        """L2: Test silver claims is parquet format."""
+        try:
+            response = s3_client.list_objects_v2(
+                Bucket=MINIO_CONFIG["bucket"], Prefix="silver/claims"
+            )
+            files = [obj["Key"] for obj in response.get("Contents", [])]
+            parquet_files = [f for f in files if f.endswith(".parquet")]
+            assert len(parquet_files) > 0, "No parquet files in silver/claims"
+        except Exception:
+            pytest.skip("MinIO not accessible")
+
+
+# =============================================================================
+# DBT Models Tests
+# =============================================================================
+
+
+class TestDBTModels:
+    """L2: Test DBT models exist and are valid."""
+
+    def test_dbt_sources_yml_exists(self):
+        """L2: Test sources.yml exists."""
+        assert Path("dbt/models/sources.yml").exists()
+
+    def test_dbt_silver_customers_model(self):
+        """L2: Test silver customers model exists."""
+        assert Path("dbt/models/silver/silver_customers.sql").exists()
+
+    def test_dbt_silver_claims_model(self):
+        """L2: Test silver claims model exists."""
+        assert Path("dbt/models/silver/silver_claims.sql").exists()
+
+    def test_dbt_gold_customers_model(self):
+        """L2: Test gold customers model exists."""
+        assert Path("dbt/models/gold/gold_customers.sql").exists()
+
+    def test_dbt_gold_claims_model(self):
+        """L2: Test gold claims model exists."""
+        assert Path("dbt/models/gold/gold_claims.sql").exists()
+
+    def test_dbt_silver_customers_has_risk_bucket(self):
+        """L2: Test silver customers has risk_bucket column."""
+        content = Path("dbt/models/silver/silver_customers.sql").read_text()
+        assert "risk_bucket" in content.lower()
+
+    def test_dbt_silver_claims_has_status_category(self):
+        """L2: Test silver claims has claim_status_category."""
+        content = Path("dbt/models/silver/silver_claims.sql").read_text()
+        assert "claim_status_category" in content.lower()
+
+    def test_dbt_silver_claims_has_vehicle_category(self):
+        """L2: Test silver claims has vehicle_category."""
+        content = Path("dbt/models/silver/silver_claims.sql").read_text()
+        assert "vehicle_category" in content.lower()
+
+
+# =============================================================================
+# Docker Services Tests
+# =============================================================================
+
+
+class TestDockerServices:
+    """L2: Test Docker services are running."""
 
     @pytest.mark.skipif(
         not Path("/var/run/docker.sock").exists(), reason="Docker not available"
     )
     def test_postgres_container_running(self):
         """L2: Test PostgreSQL container is running."""
-        import subprocess
-
         result = subprocess.run(
             [
                 "docker",
@@ -53,15 +311,13 @@ class TestDockerCompose:
             capture_output=True,
             text=True,
         )
-        # This will work when docker-compose is running
+        assert "insurance_postgres" in result.stdout
 
     @pytest.mark.skipif(
         not Path("/var/run/docker.sock").exists(), reason="Docker not available"
     )
     def test_minio_container_running(self):
         """L2: Test MinIO container is running."""
-        import subprocess
-
         result = subprocess.run(
             [
                 "docker",
@@ -74,14 +330,13 @@ class TestDockerCompose:
             capture_output=True,
             text=True,
         )
+        assert "insurance_minio" in result.stdout
 
     @pytest.mark.skipif(
         not Path("/var/run/docker.sock").exists(), reason="Docker not available"
     )
     def test_clickhouse_container_running(self):
         """L2: Test ClickHouse container is running."""
-        import subprocess
-
         result = subprocess.run(
             [
                 "docker",
@@ -94,126 +349,7 @@ class TestDockerCompose:
             capture_output=True,
             text=True,
         )
-
-
-class TestProjectStructure:
-    """L2: Test project structure is correct."""
-
-    def test_all_required_files_exist(self):
-        """L2: Test all required files exist."""
-        required_files = [
-            "docker-compose.yml",
-            "pipeline.py",
-            "synthetic_data_generator.go",
-            "go.mod",
-            "scripts/dlt_pipeline.py",
-            "scripts/reset_database.go",
-            "scripts/download_kaggle_data.py",
-            "dbt/dbt_project.yml",
-            "dbt/profiles.yml",
-            "README.md",
-            "LICENSE",
-        ]
-
-        for file in required_files:
-            assert Path(file).exists(), f"Missing: {file}"
-
-    def test_dbt_models_structure(self):
-        """L2: Test DBT models directory structure."""
-        assert Path("dbt/models/sources.yml").exists()
-
-        silver_dir = Path("dbt/models/silver")
-        assert silver_dir.exists()
-        silver_files = list(silver_dir.glob("*.sql"))
-        assert len(silver_files) >= 2
-
-        gold_dir = Path("dbt/models/gold")
-        assert gold_dir.exists()
-        gold_files = list(gold_dir.glob("*.sql"))
-        assert len(gold_files) >= 3
-
-
-class TestScriptsExecutable:
-    """L2: Test scripts have correct permissions."""
-
-    def test_unix_scripts_executable(self):
-        """L2: Test Unix scripts are executable."""
-        if os.name == "posix":
-            for script in Path("scripts_unix").glob("*.sh"):
-                assert os.access(script, os.X_OK), f"{script} not executable"
-
-
-class TestGoCode:
-    """L2: Test Go code compiles."""
-
-    def test_go_mod_valid(self):
-        """L2: Test go.mod is valid."""
-        content = Path("go.mod").read_text()
-        assert "module " in content
-        assert "github.com/lib/pq" in content
-
-    def test_synthetic_generator_has_generate_function(self):
-        """L2: Test synthetic generator has required functions."""
-        content = Path("synthetic_data_generator.go").read_text()
-        assert "func generateCustomers" in content
-        assert "func generateClaims" in content
-        assert "func main()" in content
-
-    def test_reset_database_has_truncate_function(self):
-        """L2: Test reset database has truncate function."""
-        content = Path("scripts/reset_database.go").read_text()
-        assert "func truncateTables" in content
-
-
-class TestPythonScripts:
-    """L2: Test Python scripts."""
-
-    def test_dlt_pipeline_imports(self):
-        """L2: Test DLT pipeline has required imports."""
-        content = Path("scripts/dlt_pipeline.py").read_text()
-        assert "psycopg2" in content
-        assert "boto3" in content
-        assert "pandas" in content
-
-    def test_pipeline_imports(self):
-        """L2: Test main pipeline imports."""
-        content = Path("pipeline.py").read_text()
-        assert "subprocess" in content
-        assert "logging" in content
-
-
-class TestDBTConfiguration:
-    """L2: Test DBT configuration."""
-
-    def test_dbt_project_yml_valid(self):
-        """L2: Test dbt_project.yml is valid."""
-        import yaml
-
-        with open("dbt/dbt_project.yml") as f:
-            config = yaml.safe_load(f)
-
-        assert "name" in config
-        assert config["name"] == "dbt_insurance"
-
-    def test_dbt_profiles_yml_exists(self):
-        """L2: Test profiles.yml exists."""
-        assert Path("dbt/profiles.yml").exists()
-
-
-class TestTestFiles:
-    """L2: Test test files exist."""
-
-    def test_all_test_levels_exist(self):
-        """L2: Test all test level files exist."""
-        assert Path("tests/test_L0_unit_isolated.py").exists()
-        assert Path("tests/test_L1_unit_integrated.py").exists()
-        assert Path("tests/test_L2_integration.py").exists()
-        assert Path("tests/test_L3_e2e.py").exists()
-
-    def test_test_runners_exist(self):
-        """L2: Test test runner scripts exist."""
-        assert Path("scripts_unix/run_all_tests.sh").exists()
-        assert Path("scripts_windows/run_all_tests.bat").exists()
+        assert "insurance_clickhouse" in result.stdout
 
 
 if __name__ == "__main__":

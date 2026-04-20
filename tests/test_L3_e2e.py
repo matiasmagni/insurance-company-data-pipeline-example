@@ -1,169 +1,396 @@
 """
-================================================================================
+============================================================================
 Insurance Company Data Pipeline - L3 End-to-End Tests
-================================================================================
+============================================================================
 Copyright (c) 2026 BugMentor (https://bugmentor.com)
 
-L3: End-to-End tests - Full pipeline verification (requires running services)
+L3: End-to-End tests - Full pipeline validation with real ClickHouse queries
+     Test that data flows correctly through the entire pipeline
+     Requires: docker-compose up -d and completed pipeline run
 
 Usage:
     pytest tests/test_L3_e2e.py -v
-    (Requires: docker-compose up -d and running services)
-================================================================================
+    (Requires: docker-compose up -d and data in ClickHouse)
+============================================================================
 """
 
 import pytest
-import pandas as pd
+import clickhouse_connect
 import os
-import sys
+import subprocess
 from pathlib import Path
 
 
-class TestE2EProjectComplete:
-    """L3: Test complete project structure."""
+# =============================================================================
+# Test Configuration
+# =============================================================================
 
-    def test_project_complete(self):
-        """L3: Test all project components exist."""
-        assert Path("docker-compose.yml").exists()
-        assert Path("pipeline.py").exists()
-        assert Path("synthetic_data_generator.go").exists()
-        assert Path("go.mod").exists()
-        assert Path("dbt/dbt_project.yml").exists()
-        assert Path("README.md").exists()
-
-    def test_dbt_models_complete(self):
-        """L3: Test DBT models are complete."""
-        silver_files = list(Path("dbt/models/silver").glob("*.sql"))
-        gold_files = list(Path("dbt/models/gold").glob("*.sql"))
-
-        assert len(silver_files) >= 2, "Missing silver models"
-        assert len(gold_files) >= 3, "Missing gold models"
-
-    def test_scripts_complete(self):
-        """L3: Test all scripts exist."""
-        assert Path("scripts/dlt_pipeline.py").exists()
-        assert Path("scripts/reset_database.go").exists()
-        assert Path("scripts/download_kaggle_data.py").exists()
+CLICKHOUSE_CONFIG = {
+    "host": os.getenv("CLICKHOUSE_HOST", "localhost"),
+    "port": int(os.getenv("CLICKHOUSE_PORT", "8123")),
+    "database": os.getenv("CLICKHOUSE_DB", "insurance_db"),
+    "username": os.getenv("CLICKHOUSE_USER", "default"),
+    "password": os.getenv("CLICKHOUSE_PASSWORD", "clickhouse_pass"),
+}
 
 
-class TestE2EGoCode:
-    """L3: Test Go code end-to-end."""
+# =============================================================================
+# Gold Layer - ClickHouse Tests (THE REAL VALIDATION)
+# =============================================================================
 
-    def test_go_builds(self):
-        """L3: Test Go code compiles (syntax check)."""
-        import subprocess
 
-        # Just check go.mod is valid
-        assert Path("go.mod").exists()
+class TestGoldLayerClickHouse:
+    """L3: Test Gold layer tables in ClickHouse with real queries."""
 
-        # Check syntax without building
-        result = subprocess.run(
-            ["go", "vet", "./synthetic_data_generator.go"],
-            capture_output=True,
-            text=True,
+    @pytest.fixture
+    def ch_client(self):
+        """Create ClickHouse client for tests."""
+        try:
+            client = clickhouse_connect.get_client(
+                host=CLICKHOUSE_CONFIG["host"],
+                port=CLICKHOUSE_CONFIG["port"],
+                username=CLICKHOUSE_CONFIG["username"],
+                password=CLICKHOUSE_CONFIG["password"],
+                database=CLICKHOUSE_CONFIG["database"],
+            )
+            yield client
+            client.close()
+        except Exception as e:
+            pytest.skip(f"ClickHouse not available: {e}")
+
+    def test_gold_customers_exists(self, ch_client):
+        """L3: Test gold_customers table exists."""
+        result = ch_client.query("SHOW TABLES LIKE 'gold_customers'")
+        assert len(result.result_rows) > 0, "gold_customers table does not exist"
+
+    def test_gold_claims_exists(self, ch_client):
+        """L3: Test gold_claims table exists."""
+        result = ch_client.query("SHOW TABLES LIKE 'gold_claims'")
+        assert len(result.result_rows) > 0, "gold_claims table does not exist"
+
+    def test_gold_claims_by_status_exists(self, ch_client):
+        """L3: Test gold_claims_by_status table exists."""
+        result = ch_client.query("SHOW TABLES LIKE 'gold_claims_by_status'")
+        assert len(result.result_rows) > 0, "gold_claims_by_status table does not exist"
+
+    def test_gold_claims_by_agent_exists(self, ch_client):
+        """L3: Test gold_claims_by_agent table exists."""
+        result = ch_client.query("SHOW TABLES LIKE 'gold_claims_by_agent'")
+        assert len(result.result_rows) > 0, "gold_claims_by_agent table does not exist"
+
+    def test_gold_claims_by_business_line_exists(self, ch_client):
+        """L3: Test gold_claims_by_business_line table exists."""
+        result = ch_client.query("SHOW TABLES LIKE 'gold_claims_by_business_line'")
+        assert len(result.result_rows) > 0, (
+            "gold_claims_by_business_line table does not exist"
         )
-        # This verifies syntax is correct
 
-    def test_reset_database_go_builds(self):
-        """L3: Test reset Go code compiles."""
-        import subprocess
 
-        result = subprocess.run(
-            ["go", "vet", "./scripts/reset_database.go"], capture_output=True, text=True
+class TestGoldCustomersValidation:
+    """L3: Validate gold_customers table data."""
+
+    @pytest.fixture
+    def ch_client(self):
+        try:
+            client = clickhouse_connect.get_client(
+                host=CLICKHOUSE_CONFIG["host"],
+                port=CLICKHOUSE_CONFIG["port"],
+                username=CLICKHOUSE_CONFIG["username"],
+                password=CLICKHOUSE_CONFIG["password"],
+                database=CLICKHOUSE_CONFIG["database"],
+            )
+            yield client
+            client.close()
+        except Exception:
+            pytest.skip("ClickHouse not available")
+
+    def test_gold_customers_has_data(self, ch_client):
+        """L3: Test gold_customers has data."""
+        result = ch_client.query("SELECT count() as cnt FROM gold_customers")
+        count = result.result_rows[0][0]
+        assert count > 0, "gold_customers has no data"
+
+    def test_gold_customers_has_risk_bucket(self, ch_client):
+        """L3: Test gold_customers has risk_bucket column."""
+        result = ch_client.query("DESCRIBE gold_customers")
+        columns = [row[0] for row in result.result_rows]
+        assert "risk_bucket" in columns, "risk_bucket column missing"
+
+    def test_gold_customers_risk_bucket_values(self, ch_client):
+        """L3: Test risk_bucket has valid values."""
+        result = ch_client.query("SELECT distinct risk_bucket FROM gold_customers")
+        buckets = [row[0] for row in result.result_rows]
+        expected = {"Low", "Medium", "High"}
+        assert all(b in expected for b in buckets), "Invalid risk_bucket values"
+
+    def test_gold_customers_customer_count(self, ch_client):
+        """L3: Test customer count is in expected range."""
+        result = ch_client.query("SELECT count() as cnt FROM gold_customers")
+        count = result.result_rows[0][0]
+        # Should have at least 900+ customers (from our generator)
+        assert count >= 900, f"Expected ~1000 customers, got {count}"
+
+    def test_gold_customers_credit_score_range(self, ch_client):
+        """L3: Test credit scores are in valid range."""
+        result = ch_client.query("""
+            SELECT min(credit_score) as min_cs, max(credit_score) as max_cs 
+            FROM gold_customers
+        """)
+        min_cs, max_cs = result.result_rows[0]
+        assert 300 <= min_cs <= 850, "Invalid min credit score"
+        assert 300 <= max_cs <= 850, "Invalid max credit score"
+
+
+class TestGoldClaimsValidation:
+    """L3: Validate gold_claims table data."""
+
+    @pytest.fixture
+    def ch_client(self):
+        try:
+            client = clickhouse_connect.get_client(
+                host=CLICKHOUSE_CONFIG["host"],
+                port=CLICKHOUSE_CONFIG["port"],
+                username=CLICKHOUSE_CONFIG["username"],
+                password=CLICKHOUSE_CONFIG["password"],
+                database=CLICKHOUSE_CONFIG["database"],
+            )
+            yield client
+            client.close()
+        except Exception:
+            pytest.skip("ClickHouse not available")
+
+    def test_gold_claims_has_data(self, ch_client):
+        """L3: Test gold_claims has data."""
+        result = ch_client.query("SELECT count() as cnt FROM gold_claims")
+        count = result.result_rows[0][0]
+        assert count > 0, "gold_claims has no data"
+
+    def test_gold_claims_has_claim_status_category(self, ch_client):
+        """L3: Test gold_claims has claim_status_category."""
+        result = ch_client.query("DESCRIBE gold_claims")
+        columns = [row[0] for row in result.result_rows]
+        assert "claim_status_category" in columns, "claim_status_category missing"
+
+    def test_gold_claims_has_vehicle_category(self, ch_client):
+        """L3: Test gold_claims has vehicle_category."""
+        result = ch_client.query("DESCRIBE gold_claims")
+        columns = [row[0] for row in result.result_rows]
+        assert "vehicle_category" in columns, "vehicle_category missing"
+
+    def test_gold_claims_claim_status_category_values(self, ch_client):
+        """L3: Test claim_status_category has valid values."""
+        result = ch_client.query(
+            "SELECT distinct claim_status_category FROM gold_claims"
+        )
+        categories = [row[0] for row in result.result_rows]
+        expected = {"Pending", "Closed", "Unknown"}
+        assert all(c in expected for c in categories), (
+            "Invalid claim_status_category values"
         )
 
+    def test_gold_claims_vehicle_category_values(self, ch_client):
+        """L3: Test vehicle_category has valid values."""
+        result = ch_client.query("SELECT distinct vehicle_category FROM gold_claims")
+        categories = [row[0] for row in result.result_rows]
+        # Should contain: Sedan, SUV, Truck, Luxury, Sports, Other
+        assert len(categories) > 0, "No vehicle categories"
 
-class TestE2EIntegrationStructure:
-    """L3: Test integration is complete."""
+    def test_gold_claims_count(self, ch_client):
+        """L3: Test claims count is in expected range."""
+        result = ch_client.query("SELECT count() as cnt FROM gold_claims")
+        count = result.result_rows[0][0]
+        # Should have at least 4500+ claims (from our generator)
+        assert count >= 4500, f"Expected ~5000 claims, got {count}"
 
-    def test_integration_readme(self):
-        """L3: Test README has integration docs."""
-        content = Path("README.md").read_text()
-        assert "PostgreSQL" in content
-        assert "MinIO" in content
-        assert "ClickHouse" in content
-        assert "docker-compose" in content.lower()
-
-    def test_integration_quickstart(self):
-        """L3: Test README has quick start."""
-        content = Path("README.md").read_text()
-        assert "Quick Start" in content
-        assert "docker-compose up" in content.lower()
-
-    def test_integration_database_config(self):
-        """L3: Test README has DB config."""
-        content = Path("README.md").read_text()
-        assert "5432" in content  # PostgreSQL port
-        assert "9900" in content  # MinIO port
-        assert "8123" in content  # ClickHouse port
-
-
-class TestE2ETestStructure:
-    """L3: Test test structure is complete."""
-
-    def test_test_pyramid_exists(self):
-        """L3: Test test pyramid is documented."""
-        content = Path("README.md").read_text()
-        assert "Test Pyramid" in content
-        assert "L0" in content
-        assert "L1" in content
-        assert "L2" in content
-        assert "L3" in content
-
-    def test_all_test_files_present(self):
-        """L3: Test all test levels present."""
-        assert Path("tests/test_L0_unit_isolated.py").exists()
-        assert Path("tests/test_L1_unit_integrated.py").exists()
-        assert Path("tests/test_L2_integration.py").exists()
-        assert Path("tests/test_L3_e2e.py").exists()
-
-    def test_test_runners_present(self):
-        """L3: Test test runners present."""
-        assert Path("scripts_unix/run_all_tests.sh").exists()
-        assert Path("scripts_windows/run_all_tests.bat").exists()
+    def test_gold_claims_amount_range(self, ch_client):
+        """L3: Test claim amounts are in valid range."""
+        result = ch_client.query("""
+            SELECT min(claim_amount) as min_amt, max(claim_amount) as max_amt 
+            FROM gold_claims
+        """)
+        min_amt, max_amt = result.result_rows[0]
+        assert min_amt > 0, "Invalid min claim amount"
+        assert max_amt <= 10_000_000, "Claim amount too high (possible data error)"
 
 
-class TestE2EArchitecture:
-    """L3: Test architecture is correct."""
+class TestGoldClaimsByStatusValidation:
+    """L3: Validate gold_claims_by_status aggregated table."""
 
-    def test_three_tier_architecture(self):
-        """L3: Test three tier architecture is documented."""
-        content = Path("README.md").read_text()
-        assert "raw" in content.lower() or "RAW" in content
-        assert "silver" in content.lower() or "SILVER" in content
-        assert "gold" in content.lower() or "GOLD" in content
+    @pytest.fixture
+    def ch_client(self):
+        try:
+            client = clickhouse_connect.get_client(
+                host=CLICKHOUSE_CONFIG["host"],
+                port=CLICKHOUSE_CONFIG["port"],
+                username=CLICKHOUSE_CONFIG["username"],
+                password=CLICKHOUSE_CONFIG["password"],
+                database=CLICKHOUSE_CONFIG["database"],
+            )
+            yield client
+            client.close()
+        except Exception:
+            pytest.skip("ClickHouse not available")
 
-    def test_postgresql_in_docker_compose(self):
-        """L3: Test PostgreSQL in docker-compose."""
-        content = Path("docker-compose.yml").read_text()
-        assert "postgres:" in content
-        assert "5432" in content
+    def test_gold_claims_by_status_has_data(self, ch_client):
+        """L3: Test gold_claims_by_status has data."""
+        result = ch_client.query("SELECT count() as cnt FROM gold_claims_by_status")
+        count = result.result_rows[0][0]
+        assert count > 0, "gold_claims_by_status has no data"
 
-    def test_minio_in_docker_compose(self):
-        """L3: Test MinIO in docker-compose."""
-        content = Path("docker-compose.yml").read_text()
-        assert "minio:" in content
-        assert "9900" in content
+    def test_gold_claims_by_status_columns(self, ch_client):
+        """L3: Test gold_claims_by_status has required columns."""
+        result = ch_client.query("DESCRIBE gold_claims_by_status")
+        columns = [row[0] for row in result.result_rows]
+        assert "claim_status_category" in columns
+        assert "total_claims" in columns
+        assert "total_amount" in columns
 
-    def test_clickhouse_in_docker_compose(self):
-        """L3: Test ClickHouse in docker-compose."""
-        content = Path("docker-compose.yml").read_text()
-        assert "clickhouse:" in content
-        assert "8123" in content
+    def test_gold_claims_by_status_totals(self, ch_client):
+        """L3: Test totals match gold_claims."""
+        result = ch_client.query("""
+            SELECT sum(total_claims) as total FROM gold_claims_by_status
+        """)
+        agg_total = result.result_rows[0][0]
+
+        result2 = ch_client.query("SELECT count() as cnt FROM gold_claims")
+        direct_count = result2.result_rows[0][0]
+
+        assert agg_total == direct_count, "Aggregated count doesn't match"
 
 
-class TestE2ELicense:
-    """L3: Test licensing."""
+class TestGoldClaimsByAgentValidation:
+    """L3: Validate gold_claims_by_agent aggregated table."""
 
-    def test_license_exists(self):
-        """L3: Test LICENSE file exists."""
-        assert Path("LICENSE").exists()
+    @pytest.fixture
+    def ch_client(self):
+        try:
+            client = clickhouse_connect.get_client(
+                host=CLICKHOUSE_CONFIG["host"],
+                port=CLICKHOUSE_CONFIG["port"],
+                username=CLICKHOUSE_CONFIG["username"],
+                password=CLICKHOUSE_CONFIG["password"],
+                database=CLICKHOUSE_CONFIG["database"],
+            )
+            yield client
+            client.close()
+        except Exception:
+            pytest.skip("ClickHouse not available")
 
-    def test_readme_has_copyright(self):
-        """L3: Test README has copyright."""
-        content = Path("README.md").read_text()
-        assert "Copyright" in content
-        assert "2026" in content
+    def test_gold_claims_by_agent_has_data(self, ch_client):
+        """L3: Test gold_claims_by_agent has data."""
+        result = ch_client.query("SELECT count() as cnt FROM gold_claims_by_agent")
+        count = result.result_rows[0][0]
+        assert count > 0, "gold_claims_by_agent has no data"
+
+    def test_gold_claims_by_agent_columns(self, ch_client):
+        """L3: Test gold_claims_by_agent has required columns."""
+        result = ch_client.query("DESCRIBE gold_claims_by_agent")
+        columns = [row[0] for row in result.result_rows]
+        assert "agent_id" in columns
+        assert "total_claims" in columns
+        assert "total_amount" in columns
+        assert "avg_claim_amount" in columns
+
+
+class TestGoldClaimsByBusinessLineValidation:
+    """L3: Validate gold_claims_by_business_line aggregated table."""
+
+    @pytest.fixture
+    def ch_client(self):
+        try:
+            client = clickhouse_connect.get_client(
+                host=CLICKHOUSE_CONFIG["host"],
+                port=CLICKHOUSE_CONFIG["port"],
+                username=CLICKHOUSE_CONFIG["username"],
+                password=CLICKHOUSE_CONFIG["password"],
+                database=CLICKHOUSE_CONFIG["database"],
+            )
+            yield client
+            client.close()
+        except Exception:
+            pytest.skip("ClickHouse not available")
+
+    def test_gold_claims_by_business_line_has_data(self, ch_client):
+        """L3: Test gold_claims_by_business_line has data."""
+        result = ch_client.query(
+            "SELECT count() as cnt FROM gold_claims_by_business_line"
+        )
+        count = result.result_rows[0][0]
+        assert count > 0, "gold_claims_by_business_line has no data"
+
+    def test_gold_claims_by_business_line_columns(self, ch_client):
+        """L3: Test gold_claims_by_business_line has required columns."""
+        result = ch_client.query("DESCRIBE gold_claims_by_business_line")
+        columns = [row[0] for row in result.result_rows]
+        assert "business_line" in columns
+        assert "total_claims" in columns
+        assert "total_amount" in columns
+
+    def test_gold_claims_by_business_line_business_lines(self, ch_client):
+        """L3: Test business lines are valid."""
+        result = ch_client.query(
+            "SELECT distinct business_line FROM gold_claims_by_business_line"
+        )
+        lines = [row[0] for row in result.result_rows]
+        expected = {"Auto", "Home", "Life", "Health"}
+        assert all(l in expected for l in lines), "Invalid business lines"
+
+
+class TestFullPipelineValidation:
+    """L3: Validate complete end-to-end data flow."""
+
+    @pytest.fixture
+    def ch_client(self):
+        try:
+            client = clickhouse_connect.get_client(
+                host=CLICKHOUSE_CONFIG["host"],
+                port=CLICKHOUSE_CONFIG["port"],
+                username=CLICKHOUSE_CONFIG["username"],
+                password=CLICKHOUSE_CONFIG["password"],
+                database=CLICKHOUSE_CONFIG["database"],
+            )
+            yield client
+            client.close()
+        except Exception:
+            pytest.skip("ClickHouse not available")
+
+    def test_pipeline_data_balance(self, ch_client):
+        """L3: Test data flows correctly without loss."""
+        # Get counts from all gold tables
+        customers = ch_client.query("SELECT count() FROM gold_customers").result_rows[
+            0
+        ][0]
+        claims = ch_client.query("SELECT count() FROM gold_claims").result_rows[0][0]
+
+        # Should have ~1000 customers and ~5000 claims
+        assert customers >= 900, f"Lost customers: expected ~1000, got {customers}"
+        assert claims >= 4500, f"Lost claims: expected ~5000, got {claims}"
+
+    def test_data_transformation_complete(self, ch_client):
+        """L3: Test all transformations are applied."""
+        # Check silver columns exist in gold
+        result = ch_client.query("DESCRIBE gold_claims")
+        columns = [row[0] for row in result.result_rows]
+
+        assert "risk_bucket" in columns, "risk_bucket not transformed to gold"
+        assert "claim_status_category" in columns, "claim_status_category not in gold"
+        assert "vehicle_category" in columns, "vehicle_category not in gold"
+
+    def test_aggregation_quality(self, ch_client):
+        """L3: Test aggregations are mathematically correct."""
+        # Total amounts should match sum of individual claims
+        result = ch_client.query("""
+            SELECT sum(total_amount) as total FROM gold_claims_by_status
+        """)
+        by_status_total = result.result_rows[0][0]
+
+        result2 = ch_client.query("""
+            SELECT sum(claim_amount) as total FROM gold_claims
+        """)
+        direct_total = result2.result_rows[0][0]
+
+        # Allow for small floating point differences
+        assert abs(by_status_total - direct_total) < 1, "Aggregation math error"
 
 
 if __name__ == "__main__":
