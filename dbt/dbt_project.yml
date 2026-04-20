@@ -1,0 +1,21 @@
+name: 'dbt_insurance'
+version: '1.0.0'
+
+config-version: 2
+
+profile: 'dbt_insurance'
+
+model-paths: ['models']
+seed-paths: ['seeds']
+macro-paths: ['macros']
+analysis-paths: ['analyses']
+test-paths: ['tests']
+
+target: 'dev'
+
+vars:
+  minio_endpoint: 'localhost:9900'
+  minio_bucket: 'insurance-data'
+  clickhouse_host: 'localhost'
+  clickhouse_port: 8123
+  clickhouse_database: 'insurance_db'

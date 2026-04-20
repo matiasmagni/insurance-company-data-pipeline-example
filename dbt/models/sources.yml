@@ -1,0 +1,17 @@
+version: 2
+
+sources:
+  - name: minio_raw
+    description: "Raw layer data from MinIO"
+    schema: raw
+    loader: dlt
+    freshness:
+      warn_after: { hours: 24 }
+      error_after: { hours: 48 }
+    
+    tables:
+      - name: customers
+        description: "Customer data from PostgreSQL"
+        
+      - name: claims
+        description: "Claims data from PostgreSQL"

@@ -1,0 +1,101 @@
+# =============================================================================
+# Insurance Company Data Pipeline - Docker Compose
+# =============================================================================
+# Architecture: Raw (PostgreSQL) → Silver (MinIO) → Gold (ClickHouse)
+#   - PostgreSQL 15: Raw source (customer profiles)
+#   - MinIO: Raw + Silver layers (Parquet files)
+#   - ClickHouse: Gold layer (analytics tables - NO schema prefix!)
+#
+# Usage: docker-compose up -d
+# =============================================================================
+
+version: "3.8"
+
+services:
+  postgres:
+    image: postgres:15
+    container_name: insurance_postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-insurance_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-insurance_pass}
+      POSTGRES_DB: ${POSTGRES_DB:-insurance_db}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-insurance_user}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - insurance_network
+
+  minio:
+    image: minio/minio:latest
+    container_name: insurance_minio
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
+    ports:
+      - "9900:9900"
+      - "9901:9901"
+    volumes:
+      - minio_data:/data
+    command: server /data --console-address ":9001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+    networks:
+      - insurance_network
+
+  clickhouse:
+    image: clickhouse/clickhouse-server:latest
+    container_name: insurance_clickhouse
+    environment:
+      CLICKHOUSE_DB: ${CLICKHOUSE_DB:-insurance_db}
+      CLICKHOUSE_USER: ${CLICKHOUSE_USER:-default}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-clickhouse_pass}
+    ports:
+      - "8123:8123"
+      - "9000:9000"
+    volumes:
+      - clickhouse_data:/var/lib/clickhouse
+    depends_on:
+      - minio
+    networks:
+      - insurance_network
+
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: insurance_pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@insurance.local
+      PGADMIN_DEFAULT_PASSWORD: admin
+    ports:
+      - "8080:80"
+    depends_on:
+      - postgres
+    networks:
+      - insurance_network
+
+# =============================================================================
+# Networks
+# =============================================================================
+networks:
+  insurance_network:
+    driver: bridge
+
+# =============================================================================
+# Volumes
+# =============================================================================
+volumes:
+  postgres_data:
+    driver: local
+  minio_data:
+    driver: local
+  clickhouse_data:
+    driver: local

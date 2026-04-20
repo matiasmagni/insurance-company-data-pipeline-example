@@ -1,0 +1,12 @@
+dbt_insurance:
+  target: dev
+  
+  outputs:
+    dev:
+      type: postgres
+      host: localhost
+      port: 5432
+      user: insurance_user
+      password: insurance_pass
+      dbname: insurance_db
+      schema: public
