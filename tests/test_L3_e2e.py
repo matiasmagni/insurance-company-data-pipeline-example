@@ -5,7 +5,7 @@ Insurance Company Data Pipeline - L3 End-to-End Tests
 L3: End-to-End tests - Full pipeline validation
     - Injects data into Postgres
     - Runs the orchestrator (pipeline.py)
-    - Validates results in ClickHouse gold tables
+    - Validates results in ClickHouse analytics tables
 
 Usage:
     pytest tests/test_L3_e2e.py -v
@@ -128,10 +128,10 @@ class TestE2EValidation:
         yield client
         client.close()
 
-    def test_gold_customers_risk_buckets(self, setup_e2e, ch_client):
+    def test_analytics_customers_risk_buckets(self, setup_e2e, ch_client):
         """Verify risk buckets are correctly calculated for E2E data."""
         result = ch_client.query("""
-            SELECT email, risk_bucket FROM gold_customers 
+            SELECT email, risk_bucket FROM analytics_customers 
             WHERE email LIKE 'e2e_%' ORDER BY email
         """)
         rows = dict(result.result_rows)
@@ -142,11 +142,11 @@ class TestE2EValidation:
         assert rows["e2e_4@test.com"] == "Poor"
         assert rows["e2e_5@test.com"] == "Unknown"
 
-    def test_gold_claims_categories(self, setup_e2e, ch_client):
+    def test_analytics_claims_categories(self, setup_e2e, ch_client):
         """Verify claim categories are correctly calculated."""
         result = ch_client.query("""
             SELECT claim_id, claim_status_category, vehicle_category 
-            FROM gold_claims 
+            FROM analytics_claims 
             WHERE claim_id IN ('9001', '9002', '9003', '9004')
             ORDER BY claim_id
         """)
@@ -161,21 +161,21 @@ class TestE2EValidation:
         # '9004': Health, Investigation, Motorcycle
         assert rows["9004"] == ("Other", "Motorcycle")
 
-    def test_gold_aggregations_exist(self, setup_e2e, ch_client):
-        """Check all gold aggregation tables exist and have data."""
+    def test_analytics_aggregations_exist(self, setup_e2e, ch_client):
+        """Check all analytics aggregation tables exist and have data."""
         tables = [
-            "gold_claims_by_status",
-            "gold_claims_by_agent",
-            "gold_claims_by_business_line",
+            "analytics_claims_by_status",
+            "analytics_claims_by_agent",
+            "analytics_claims_by_business_line",
         ]
         for table in tables:
             result = ch_client.query(f"SELECT count() FROM {table}")
             assert result.result_rows[0][0] > 0
 
-    def test_gold_business_line_values(self, setup_e2e, ch_client):
+    def test_analytics_business_line_values(self, setup_e2e, ch_client):
         """Check business line values match expected set."""
         result = ch_client.query(
-            "SELECT distinct business_line FROM gold_claims_by_business_line"
+            "SELECT distinct business_line FROM analytics_claims_by_business_line"
         )
         lines = [row[0] for row in result.result_rows]
         # Should contain at least Auto, Home, Life, Health from our injection

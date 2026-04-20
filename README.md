@@ -35,8 +35,8 @@ A production-grade data lakehouse pipeline demonstrating modern ELT/ETL architec
    - [5.1 PostgreSQL Raw Tables](#51-postgresql-raw-tables)
    - [5.2 Kaggle CSV Schema](#52-kaggle-csv-schema)
    - [5.3 Data Mapping](#53-data-mapping-postgresql--kaggle)
-   - [5.4 Silver Layer Schema](#54-silver-layer-schema)
-   - [5.5 Gold Layer Schema](#55-gold-layer-schema)
+   - [5.4 Processed Layer Schema](#54-processed-layer-schema)
+   - [5.5 Analytics Layer Schema](#55-analytics-layer-schema)
 6. [Project Structure](#6-project-structure)
 7. [Test Pyramid](#7-test-pyramid)
 8. [Quick Start](#8-quick-start)
@@ -58,6 +58,8 @@ Eng. Matías J. Magni | CEO @ BugMentor
 ---
 
 ## 1. Technologies Explained
+ 
+This project demonstrates a data lakehouse architecture with three canonical layers: raw, silver, and analytics. The raw data layer ingests data from PostgreSQL and Kaggle; the silver layer stores cleaned/transformed data in Parquet; and the analytics layer provides business-ready insights via ClickHouse views.
 
 This section explains all technologies used in the pipeline, designed for both junior and senior engineers.
 
@@ -112,7 +114,7 @@ MinIO provides the **Data Lake** layer:
 - **Object**: A file with metadata (e.g., `customers/customers_001.parquet`)
 - **Parquet**: Columnar file format - stores data by columns, not rows
 - **Raw Layer**: Original data as extracted from PostgreSQL
-- **Silver Layer**: Cleaned/transformed data
+- **Processed Layer**: Cleaned/transformed data ready for analytics
 
 **Key Concepts for Seniors:**
 - **Object Storage vs Block/File**: Objects are flat (no hierarchy), addressed by key
@@ -218,7 +220,7 @@ SELECT * FROM claims_by_status;
 DBT is a **transformation tool** that lets you transform data in your warehouse using SQL. It follows the **ELT** pattern (Extract, Load, Transform).
 
 **Why use it here?**  
-DBT handles the **Silver → Gold** transformation:
+DBT handles the **Processed → Analytics** transformation:
 - **Version control** for SQL models
 - **Jinja templating** for reusable SQL
 - **Testing** built-in
@@ -243,7 +245,7 @@ DBT handles the **Silver → Gold** transformation:
 dbt run
 
 # Run specific model
-dbt run --select silver_customers
+dbt run --select processed_customers
 
 # Test models
 dbt test
@@ -330,7 +332,7 @@ docker-compose down
 This project implements a **data lakehouse architecture** with data flowing:
 
 ```
-PostgreSQL + Kaggle → MinIO:raw/ → MinIO:silver/ → ClickHouse:gold
+PostgreSQL + Kaggle → MinIO:raw/ → MinIO:silver/ → ClickHouse:analytics
 ```
 
 ```mermaid
@@ -349,14 +351,14 @@ graph LR
     end
     
     subgraph "Step 3: Analytics"
-        GOLD[ClickHouse\ngold tables]
+        Analytics[ClickHouse\nanalytics tables]
     end
     
     PG -->|dlt_pipeline.py| RAW
     KG -->|load_kaggle_to_minio.py| RAW
-    RAW -->|silver_transform.py| SIL
-    SIL -->|load_silver_to_ch.py| GOLD
-    GOLD -->|dbt gold| GOLD
+    RAW -->|processed_transform.py| PROC[Processed]
+    PROC -->|load_to_clickhouse.py| ANALYT[Analytics]
+    ANALYT -->|dbt analytics| ANALYTICS
 ```
 
 ---
@@ -375,16 +377,16 @@ flowchart TB
         K2M[load_kaggle_to_minio.py]
     end
     
-    subgraph "Step 2: Transform → MinIO silver/"
-        SIL[silver_transform.py]
+    subgraph "Step 2: Transform → MinIO processed/"
+        PROC[processed_transform.py]
     end
     
     subgraph "Step 2.5: Load to ClickHouse"
-        LOAD[load_silver_to_clickhouse.py]
+        LOAD[load_to_clickhouse.py]
     end
     
-    subgraph "Step 3: Gold"
-        DBT[dbt run gold/]
+    subgraph "Step 3: Analytics"
+        DBT[dbt run analytics/]
     end
     
     PG -->|go run scripts/synthetic_data_generator.go| DLT
@@ -393,11 +395,11 @@ flowchart TB
     DLT -->|s3://raw/claims/| RAW
     K2M -->|s3://raw/kaggle_customers/| RAW
     K2M -->|s3://raw/kaggle_claims/| RAW
-    RAW -->|python silver_transform.py| SIL
-    SIL -->|s3://silver/customers/| SILV[(MinIO silver/)]
-    SIL -->|s3://silver/claims/| SILV
-    SILV -->|python load_silver_to_clickhouse.py| LOAD
-    LOAD -->|ClickHouse tables| CH[(ClickHouse gold)]
+    RAW -->|python processed_transform.py| PROC_STORAGE[(MinIO processed/)]
+    PROC -->|s3://processed/customers/| PROC_STORAGE
+    PROC -->|s3://processed/claims/| PROC_STORAGE
+    PROC_STORAGE -->|python load_to_clickhouse.py| LOAD
+    LOAD -->|ClickHouse tables| CH[(ClickHouse Analytics)]
     CH -->|dbt run| DBT
 ```
 
@@ -408,9 +410,9 @@ flowchart TB
 | 0 | `python scripts/download_kaggle_data.py` | data/*.csv |
 | 1a | `python scripts/dlt_pipeline.py` | s3://raw/customers/, raw/claims/ |
 | 1b | `python scripts/load_kaggle_to_minio.py` | s3://raw/kaggle_*/ |
-| 2 | `python scripts/silver_transform.py` | s3://silver/ (with risk_bucket, categories) |
-| 2.5 | `python scripts/load_silver_to_clickhouse.py` | ClickHouse tables |
-| 3 | `dbt run` | ClickHouse gold aggregations |
+| 2 | `python scripts/processed_transform.py` | s3://processed/ (with risk_bucket, categories) |
+| 2.5 | `python scripts/load_to_clickhouse.py` | ClickHouse tables |
+| 3 | `dbt run` | ClickHouse analytics aggregations |
 
 **Note:** The pipeline supports **two raw data sources**: PostgreSQL and Kaggle CSV. Both feed into MinIO raw layer.
 
@@ -436,8 +438,8 @@ graph TB
 | Service | Port | Purpose | Schema |
 |---------|------|---------|--------|
 | **PostgreSQL** | 5432 | Raw source data | `public.customers`, `public.claims` |
-| **MinIO** | 9900 (API), 9901 (Console) | Raw + Silver storage | `s3://insurance-data/{raw,silver}/` |
-| **ClickHouse** | 8123 (HTTP), 9000 (Native) | Gold analytics | Table names: `customers`, `claims`, `claims_by_status` |
+| **MinIO** | 9900 (API), 9901 (Console) | Raw + Processed storage | `s3://insurance-data/{raw,processed}/` |
+| **ClickHouse** | 8123 (HTTP), 9000 (Native) | Analytics layer | Table names: `customers`, `claims`, `claims_by_status` |
 | **pgAdmin** | 8080 | PostgreSQL admin UI | - |
 
 ---
@@ -564,11 +566,11 @@ CLM00000001,POL000001,2024-01-15,5000.00,Collision,Approved,Sedan,35,N,500,Los A
 | N/A | `driver_age` | Not in PostgreSQL |
 | N/A | `fraud_indicator` | Not in PostgreSQL |
 
-### 5.4. Silver Layer Schema
+### 5.4. Silver Layer (Lakehouse) Schema
 
-The **Silver** layer transforms raw data and stores it in MinIO as Parquet files.
+The **Silver Layer (Lakehouse)** transforms raw data and stores it in MinIO as Parquet files.
 
-#### silver_customers (View Schema)
+#### silver_customers (Table Schema)
 
 | Column | Type | Description |
 |-------|------|-------------|
@@ -598,7 +600,7 @@ The **Silver** layer transforms raw data and stores it in MinIO as Parquet files
 - Poor:     credit_score < 650
 ```
 
-#### silver_claims (View Schema)
+#### silver_claims (Table Schema)
 
 | Column | Type | Description |
 |-------|------|-------------|
@@ -634,19 +636,19 @@ The **Silver** layer transforms raw data and stores it in MinIO as Parquet files
 - Other:       All other types
 ```
 
-### 5.5. Gold Layer Schema
+### 5.5. Analytics Layer Schema
 
-The **Gold** layer contains aggregated analytics tables in ClickHouse (no schema prefix).
+The **Analytics** layer contains aggregated analytics tables in ClickHouse (no schema prefix).
 
-#### gold_customers (Table Schema)
+#### analytics_customers (Table Schema)
 
-Direct copy of `silver_customers` view with all columns.
+Direct copy of `processed_customers` table with all columns.
 
-#### gold_claims (Table Schema)
+#### analytics_claims (Table Schema)
 
-Direct copy of `silver_claims` view with all columns.
+Direct copy of `processed_claims` table with all columns.
 
-#### gold_claims_by_status (Aggregation)
+#### analytics_claims_by_status (Aggregation)
 
 | Column | Type | Description |
 |-------|------|-------------|
@@ -666,11 +668,11 @@ SELECT * FROM claims_by_status;
 -- Denied   | 500         | 3000000.00         | 0.00
 ```
 
-#### gold_claims_by_agent (Aggregation)
+#### analytics_claims_by_agent (Aggregation)
 
 Aggregated by agent with totals and averages.
 
-#### gold_claims_by_business_line (Aggregation)
+#### analytics_claims_by_business_line (Aggregation)
 
 Aggregated by vehicle category (Car, SUV, Truck, Motorcycle).
 
@@ -695,15 +697,15 @@ insurance-company-data-pipeline-example/
 │   ├── profiles.yml
 │   └── models/
 │       ├── sources.yml           # MinIO source definitions
-│       ├── silver/
-│       │   ├── silver_customers.sql
-│       │   └── silver_claims.sql
-│       └── gold/
-│           ├── gold_customers.sql
-│           ├── gold_claims.sql
-│           ├── gold_claims_by_status.sql
-│           ├── gold_claims_by_agent.sql
-│           └── gold_claims_by_business_line.sql
+│       ├── processed/
+│       │   ├── processed_customers.sql
+│       │   └── processed_claims.sql
+│       └── analytics/
+│           ├── analytics_customers.sql
+│           ├── analytics_claims.sql
+│           ├── analytics_claims_by_status.sql
+│           ├── analytics_claims_by_agent.sql
+│           └── analytics_claims_by_business_line.sql
 │
 ├── scripts_unix/                # Unix test runners
 │   ├── run_l0_tests.sh          # Unit tests isolated
@@ -863,7 +865,7 @@ postgres.insert("customers", test_rows)
 subprocess.run(["python", "pipeline.py"])
 
 # Verify final output
-result = clickhouse.query("SELECT COUNT(*) FROM gold_customers")
+result = clickhouse.query("SELECT COUNT(*) FROM analytics_customers")
 assert result == 5
 ```
 
@@ -911,12 +913,12 @@ go run scripts/reset_database.go --regenerate
 ### 8.4. Run Pipeline
 
 ```bash
-# Run full pipeline: PostgreSQL → MinIO (raw) → MinIO (silver) → ClickHouse (gold)
+# Run full pipeline: PostgreSQL → MinIO (raw) → MinIO (silver) → ClickHouse (analytics)
 python pipeline.py
 
 # Or run steps individually:
 python scripts/dlt_pipeline.py       # PostgreSQL → MinIO raw
-cd dbt && dbt run                  # MinIO raw → MinIO silver → ClickHouse gold
+cd dbt && dbt run                  # MinIO raw → MinIO silver → ClickHouse analytics
 ```
 
 ---
@@ -963,7 +965,7 @@ s3://insurance-data/
         └── claims_with_agents.parquet
 ```
 
-### 9.3. ClickHouse (Gold Layer)
+### 9.3. ClickHouse (Gold Analytics Layer)
 
 | Parameter | Value |
 |-----------|-------|
@@ -973,7 +975,7 @@ s3://insurance-data/
 | Username | default |
 | Password | clickhouse_pass |
 
-**Gold Tables (NO schema prefix - just table names):**
+**Analytics Tables (NO schema prefix - just table names):**
 - `customers` - Enriched customer data with risk buckets
 - `claims` - Claims with agent group assignments
 - `claims_by_status` - Aggregated by claim status
@@ -1027,7 +1029,7 @@ pytest tests/test_L3_e2e.py -v
 
 ## 11. SQL Examples
 
-### 11.1. ClickHouse Gold Layer
+### 11.1. ClickHouse Analytics Layer
 
 All tables in ClickHouse are accessed **without** schema prefix:
 

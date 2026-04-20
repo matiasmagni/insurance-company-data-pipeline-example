@@ -1,10 +1,10 @@
 # =============================================================================
 # Insurance Company Data Pipeline - Docker Compose
 # =============================================================================
-# Architecture: Raw (PostgreSQL) → Silver (MinIO) → Gold (ClickHouse)
+# Architecture: Raw (PostgreSQL) → Silver (MinIO) → Analytics (ClickHouse)
 #   - PostgreSQL 15: Raw source (customer profiles)
 #   - MinIO: Raw + Silver layers (Parquet files)
-#   - ClickHouse: Gold layer (analytics tables - NO schema prefix!)
+#   - ClickHouse: Analytics layer (analytics tables - NO schema prefix!)
 #
 # Usage: docker-compose up -d
 # =============================================================================

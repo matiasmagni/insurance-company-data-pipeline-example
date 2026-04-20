@@ -2,11 +2,11 @@
 """
 Insurance Company Data Pipeline
 =============================
-Pipeline: PostgreSQL + Kaggle → MinIO(raw) → MinIO(silver) → ClickHouse(gold)
+Pipeline: PostgreSQL + Kaggle → MinIO(raw) → MinIO(silver) → ClickHouse(analytics)
 
 Architecture:
     PostgreSQL ─┐
-                ├──→ MinIO raw/ ──→ MinIO silver/ ──→ ClickHouse gold
+                ├──→ MinIO raw/ ──→ MinIO silver/ ──→ ClickHouse analytics
     Kaggle CSV ─┘     (DLT)          (Python)       (DBT)
 
 Usage:
@@ -70,8 +70,8 @@ def main():
             logger.error(f"Pipeline stopped at {description}")
             sys.exit(1)
 
-    # Step 3: DBT Gold
-    logger.info("\n>>> Step 3: DBT Gold Aggregations")
+    # Step 3: DBT Analytics
+    logger.info("\n>>> Step 3: DBT Analytics Aggregations")
     dbt_dir = Path(__file__).parent / "dbt"
     try:
         subprocess.run(["dbt", "run"], cwd=str(dbt_dir), check=True)
@@ -91,19 +91,19 @@ def main():
                 password=os.getenv("CLICKHOUSE_PASSWORD", "clickhouse_pass"),
             )
 
-            # gold_customers
+            # analytics_customers
             ch.command(
-                "CREATE OR REPLACE VIEW gold_customers AS SELECT * FROM silver_customers"
+                "CREATE OR REPLACE VIEW analytics_customers AS SELECT * FROM silver_customers"
             )
 
-            # gold_claims
+            # analytics_claims
             ch.command(
-                "CREATE OR REPLACE VIEW gold_claims AS SELECT * FROM silver_claims"
+                "CREATE OR REPLACE VIEW analytics_claims AS SELECT * FROM silver_claims"
             )
 
-            # gold_claims_by_status
+            # analytics_claims_by_status
             ch.command("""
-                CREATE OR REPLACE VIEW gold_claims_by_status AS 
+                CREATE OR REPLACE VIEW analytics_claims_by_status AS 
                 SELECT 
                     claim_status_category,
                     COUNT(*) AS total_claims,
@@ -113,9 +113,9 @@ def main():
                 GROUP BY claim_status_category
             """)
 
-            # gold_claims_by_agent
+            # analytics_claims_by_agent
             ch.command("""
-                CREATE OR REPLACE VIEW gold_claims_by_agent AS 
+                CREATE OR REPLACE VIEW analytics_claims_by_agent AS 
                 SELECT 
                     agent_name as agent_id,
                     COUNT(*) AS total_claims,
@@ -125,9 +125,9 @@ def main():
                 GROUP BY agent_name
             """)
 
-            # gold_claims_by_business_line
+            # analytics_claims_by_business_line
             ch.command("""
-                CREATE OR REPLACE VIEW gold_claims_by_business_line AS 
+                CREATE OR REPLACE VIEW analytics_claims_by_business_line AS 
                 SELECT 
                     claim_type AS business_line,
                     COUNT(*) AS total_claims,
@@ -137,7 +137,7 @@ def main():
             """)
 
             logger.info(
-                "Fallback gold aggregations completed successfully via direct SQL"
+                "Fallback analytics aggregations completed successfully via direct SQL"
             )
         except Exception as fallback_e:
             logger.error(f"Fallback also failed: {fallback_e}")
