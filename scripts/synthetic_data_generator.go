@@ -12,7 +12,7 @@ import (
 
 const (
 	DBHost     = "localhost"
-	DBPort     = 5432
+	DBPort     = 5435
 	DBUser     = "insurance_user"
 	DBPassword = "insurance_pass"
 	DBName     = "insurance_db"
@@ -211,10 +211,11 @@ func main() {
 
 	log.Println("Connected to PostgreSQL")
 
+	// Use a fixed seed for reproducible test data if needed, or time-based for variety
 	rand.Seed(time.Now().UnixNano())
 
-	customerCount := 1000
-	claimsPerCustomer := 5
+	customerCount := 100
+	claimsPerCustomer := 3
 
 	if err := generateCustomers(db, customerCount); err != nil {
 		log.Fatalf("Failed to generate customers: %v", err)

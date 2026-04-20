@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
 DLT Pipeline: PostgreSQL → MinIO (Raw Layer)
-====================================
-Extracts data from PostgreSQL and loads to MinIO as Parquet files.
+===================================
+Extracts data from PostgreSQL and loads to MinIO raw/ bucket using DLT.
 
 Usage:
     python scripts/dlt_pipeline.py
@@ -11,13 +11,10 @@ Usage:
 import os
 import sys
 import logging
-from datetime import datetime
 from pathlib import Path
 
-import boto3
-import pandas as pd
-import psycopg2
-from psycopg2.extras import RealDictCursor
+import dlt
+from dlt.sources.sql_database import sql_database
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
@@ -25,112 +22,54 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-POSTGRES_CONFIG = {
-    "host": os.getenv("POSTGRES_HOST", "localhost"),
-    "port": int(os.getenv("POSTGRES_PORT", 5432)),
-    "database": os.getenv("POSTGRES_DB", "insurance_db"),
-    "user": os.getenv("POSTGRES_USER", "insurance_user"),
-    "password": os.getenv("POSTGRES_PASSWORD", "insurance_pass"),
-}
-
-MINIO_CONFIG = {
-    "endpoint": os.getenv("MINIO_ENDPOINT", "localhost:9900"),
-    "access_key": os.getenv("MINIO_ROOT_USER", "minioadmin"),
-    "secret_key": os.getenv("MINIO_ROOT_PASSWORD", "minioadmin"),
-    "bucket": os.getenv("MINIO_BUCKET", "insurance-data"),
-}
-
-RAW_TABLES = ["customers", "claims"]
-
-
-def get_postgres_connection():
-    """Create PostgreSQL connection."""
-    return psycopg2.connect(**POSTGRES_CONFIG)
-
-
-def get_minio_client():
-    """Create MinIO/S3 client."""
-    return boto3.client(
-        "s3",
-        endpoint_url=f"http://{MINIO_CONFIG['endpoint']}",
-        aws_access_key_id=MINIO_CONFIG["access_key"],
-        aws_secret_access_key=MINIO_CONFIG["secret_key"],
-    )
-
-
-def ensure_bucket_exists(s3_client):
-    """Ensure MinIO bucket exists."""
-    try:
-        s3_client.head_bucket(Bucket=MINIO_CONFIG["bucket"])
-        logger.info(f"Bucket '{MINIO_CONFIG['bucket']}' already exists")
-    except Exception:
-        s3_client.create_bucket(Bucket=MINIO_CONFIG["bucket"])
-        logger.info(f"Created bucket '{MINIO_CONFIG['bucket']}'")
-
-
-def export_table_to_parquet(s3_client, table_name: str, conn):
-    """Export a PostgreSQL table to MinIO as Parquet."""
-    query = f"SELECT * FROM {table_name}"
-
-    logger.info(f"Exporting table: {table_name}")
-    df = pd.read_sql(query, conn)
-
-    if df.empty:
-        logger.warning(f"Table {table_name} is empty, skipping")
-        return
-
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    filename = f"{table_name}_{timestamp}.parquet"
-
-    local_path = Path("/tmp") / filename
-    df.to_parquet(local_path, index=False)
-
-    s3_key = f"raw/{table_name}/{filename}"
-    s3_client.upload_file(
-        str(local_path),
-        MINIO_CONFIG["bucket"],
-        s3_key,
-    )
-
-    local_path.unlink()
-
-    logger.info(f"Loaded {len(df)} rows to s3://{MINIO_CONFIG['bucket']}/{s3_key}")
-
-
 def run_dlt_pipeline():
-    """Run the DLT pipeline."""
+    """Run the DLT pipeline to move data from Postgres to MinIO."""
     logger.info("=" * 60)
-    logger.info("DLT Pipeline: PostgreSQL → MinIO (Raw Layer)")
+    logger.info("DLT Pipeline: PostgreSQL → MinIO raw/")
     logger.info("=" * 60)
 
-    conn = None
-    s3_client = None
+    # Database connection string
+    pg_user = os.getenv("POSTGRES_USER", "insurance_user")
+    pg_pass = os.getenv("POSTGRES_PASSWORD", "insurance_pass")
+    pg_host = os.getenv("POSTGRES_HOST", "localhost")
+    pg_port = os.getenv("POSTGRES_PORT", "5435")
+    pg_db = os.getenv("POSTGRES_DB", "insurance_db")
+    
+    conn_str = f"postgresql://{pg_user}:{pg_pass}@{pg_host}:{pg_port}/{pg_db}"
+
+    # MinIO (S3) destination config
+    minio_bucket = os.getenv("MINIO_BUCKET", "insurance-data")
+    minio_endpoint = os.getenv("MINIO_ENDPOINT", "localhost:9900")
+    minio_user = os.getenv("MINIO_ROOT_USER", "minioadmin")
+    minio_pass = os.getenv("MINIO_ROOT_PASSWORD", "minioadmin")
+
+    # Set environment variables for DLT filesystem destination
+    os.environ["DESTINATION__FILESYSTEM__BUCKET_URL"] = f"s3://{minio_bucket}"
+    os.environ["DESTINATION__FILESYSTEM__CREDENTIALS__ENDPOINT_URL"] = f"http://{minio_endpoint}"
+    os.environ["DESTINATION__FILESYSTEM__CREDENTIALS__AWS_ACCESS_KEY_ID"] = minio_user
+    os.environ["DESTINATION__FILESYSTEM__CREDENTIALS__AWS_SECRET_ACCESS_KEY"] = minio_pass
 
     try:
-        logger.info("Connecting to PostgreSQL...")
-        conn = get_postgres_connection()
+        # Create pipeline
+        pipeline = dlt.pipeline(
+            pipeline_name="postgres_to_minio",
+            destination="filesystem",
+            dataset_name="raw",
+        )
 
-        logger.info("Connecting to MinIO...")
-        s3_client = get_minio_client()
+        # Source from Postgres
+        # We only want customers and claims tables
+        source = sql_database(conn_str).with_resources("customers", "claims")
 
-        logger.info("Ensuring bucket exists...")
-        ensure_bucket_exists(s3_client)
+        # Run pipeline
+        # Use parquet format as per README
+        load_info = pipeline.run(source, loader_file_format="parquet")
 
-        for table in RAW_TABLES:
-            export_table_to_parquet(s3_client, table, conn)
-
-        logger.info("=" * 60)
-        logger.info("DLT Pipeline completed successfully!")
-        logger.info("=" * 60)
+        logger.info(f"DLT Pipeline completed! Load info: {load_info}")
 
     except Exception as e:
-        logger.error(f"Pipeline failed: {e}")
+        logger.error(f"DLT Pipeline failed: {e}")
         sys.exit(1)
-
-    finally:
-        if conn:
-            conn.close()
-        logger.info("Connections closed")
 
 
 if __name__ == "__main__":

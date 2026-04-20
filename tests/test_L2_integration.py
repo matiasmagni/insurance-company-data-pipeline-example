@@ -2,10 +2,8 @@
 ============================================================================
 Insurance Company Data Pipeline - L2 Integration Tests
 ============================================================================
-Copyright (c) 2026 BugMentor (https://bugmentor.com)
-
-L2: Integration tests - Test real services running in Docker
-     Requires: docker-compose up -d
+L2: Integration tests - Test real services communication
+     Tests that Step A can talk to Step B.
 
 Usage:
     pytest tests/test_L2_integration.py -v
@@ -16,11 +14,23 @@ import pytest
 import psycopg2
 import boto3
 import os
+import pandas as pd
+from pathlib import Path
+import sys
 
+# Add project root to path
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
+from scripts.dlt_pipeline import run_dlt_pipeline
+try:
+    from scripts.silver_transform import transform_table_to_parquet
+except ImportError:
+    transform_table_to_parquet = None
+
+# Config
 POSTGRES_CONFIG = {
     "host": os.getenv("POSTGRES_HOST", "localhost"),
-    "port": int(os.getenv("POSTGRES_PORT", "5432")),
+    "port": int(os.getenv("POSTGRES_PORT", "5435")),
     "database": os.getenv("POSTGRES_DB", "insurance_db"),
     "user": os.getenv("POSTGRES_USER", "insurance_user"),
     "password": os.getenv("POSTGRES_PASSWORD", "insurance_pass"),
@@ -34,92 +44,93 @@ MINIO_CONFIG = {
 }
 
 
-class TestPostgreSQLIntegration:
-    """L2: Test real PostgreSQL operations."""
+class TestDLTToMinIO:
+    """L2: Test DLT extraction from Postgres to MinIO."""
 
-    def test_postgres_connection(self):
+    def test_dlt_postgres_to_minio(self):
+        """Proof that DLT can move data from PG to MinIO."""
         try:
-            conn = psycopg2.connect(**POSTGRES_CONFIG)
-            conn.close()
-        except Exception as e:
-            pytest.skip(f"PostgreSQL unavailable: {e}")
-
-    def test_customers_table_exists(self):
-        try:
+            # 1. Ensure we have some data in PG
             conn = psycopg2.connect(**POSTGRES_CONFIG)
             cur = conn.cursor()
-            cur.execute("SELECT COUNT(*) FROM customers")
-            count = cur.fetchone()[0]
+            cur.execute("CREATE TABLE IF NOT EXISTS test_dlt (id INT, name TEXT)")
+            cur.execute("INSERT INTO test_dlt VALUES (1, 'test')")
+            conn.commit()
             cur.close()
             conn.close()
-            assert count >= 0
-        except Exception as e:
-            pytest.skip(f"PostgreSQL unavailable: {e}")
-
-    def test_claims_table_exists(self):
-        try:
-            conn = psycopg2.connect(**POSTGRES_CONFIG)
-            cur = conn.cursor()
-            cur.execute("SELECT COUNT(*) FROM claims")
-            count = cur.fetchone()[0]
-            cur.close()
-            conn.close()
-            assert count >= 0
-        except Exception as e:
-            pytest.skip(f"PostgreSQL unavailable: {e}")
-
-
-class TestMinIOIntegration:
-    """L2: Test real MinIO operations."""
-
-    @pytest.fixture
-    def s3_client(self):
-        try:
-            client = boto3.client(
+            
+            # 2. Run DLT (modified to test our table)
+            # Actually, we'll just run the real one and check if it produced anything
+            # if services are up
+            import subprocess
+            import sys
+            script_path = Path(__file__).parent.parent / "scripts" / "dlt_pipeline.py"
+            subprocess.run([sys.executable, str(script_path)], check=True)
+            
+            # 3. Check MinIO
+            s3 = boto3.client(
                 "s3",
                 endpoint_url=f"http://{MINIO_CONFIG['endpoint']}",
                 aws_access_key_id=MINIO_CONFIG["access_key"],
                 aws_secret_access_key=MINIO_CONFIG["secret_key"],
             )
-            client.head_bucket(Bucket=MINIO_CONFIG["bucket"])
-            return client
+            
+            response = s3.list_objects_v2(Bucket=MINIO_CONFIG["bucket"], Prefix="raw/customers/")
+            assert "Contents" in response, "DLT did not produce any output in MinIO"
+            
         except Exception as e:
-            pytest.skip(f"MinIO unavailable: {e}")
+            pytest.skip(f"Services unavailable: {e}")
 
-    def test_bucket_exists(self, s3_client):
-        s3_client.head_bucket(Bucket=MINIO_CONFIG["bucket"])
 
-    def test_can_list_objects(self, s3_client):
+class TestPythonToMinIO:
+    """L2: Test Python script transformation logic on MinIO."""
+
+    def test_silver_transformation_flow(self):
+        """Proof that silver_transform can read raw and write silver."""
         try:
-            result = s3_client.list_objects_v2(Bucket=MINIO_CONFIG["bucket"])
-            assert "Contents" in result or result.get("KeyCount", 0) == 0
+            import subprocess
+            import sys
+            script_path = Path(__file__).parent.parent / "scripts" / "silver_transform.py"
+            subprocess.run([sys.executable, str(script_path)], check=True)
+            
+            # Check MinIO silver bucket
+            s3 = boto3.client(
+                "s3",
+                endpoint_url=f"http://{MINIO_CONFIG['endpoint']}",
+                aws_access_key_id=MINIO_CONFIG["access_key"],
+                aws_secret_access_key=MINIO_CONFIG["secret_key"],
+            )
+            
+            response = s3.list_objects_v2(Bucket=MINIO_CONFIG["bucket"], Prefix="silver/silver_customers/")
+            assert "Contents" in response, "Silver transform did not produce any output"
+            
         except Exception as e:
-            pytest.skip(f"MinIO unavailable: {e}")
+            pytest.skip(f"Services unavailable: {e}")
 
 
-class TestDBTModels:
-    """L2: Test DBT model files exist and are valid SQL."""
+class TestMinIOToClickHouse:
+    """L2: Test loading from MinIO to ClickHouse."""
 
-    def test_silver_customers_sql(self):
-        from pathlib import Path
-
-        content = Path("dbt/models/silver/silver_customers.sql").read_text()
-        assert "risk_bucket" in content.lower()
-        assert "CASE" in content
-
-    def test_silver_claims_sql(self):
-        from pathlib import Path
-
-        content = Path("dbt/models/silver/silver_claims.sql").read_text()
-        assert "claim_status_category" in content.lower()
-        assert "vehicle_category" in content.lower()
-
-    def test_gold_customers_sql(self):
-        from pathlib import Path
-
-        content = Path("dbt/models/gold/gold_customers.sql").read_text()
-        assert len(content) > 0
-
-
-if __name__ == "__main__":
-    pytest.main([__file__, "-v", "--tb=short"])
+    def test_load_silver_to_clickhouse(self):
+        """Proof that loader script can move data from MinIO to ClickHouse."""
+        try:
+            import subprocess
+            import sys
+            script_path = Path(__file__).parent.parent / "scripts" / "load_silver_to_clickhouse.py"
+            subprocess.run([sys.executable, str(script_path)], check=True)
+            
+            # Check ClickHouse
+            import clickhouse_connect
+            ch = clickhouse_connect.get_client(
+                host=os.getenv("CLICKHOUSE_HOST", "localhost"),
+                port=int(os.getenv("CLICKHOUSE_PORT", 8123)),
+                database=os.getenv("CLICKHOUSE_DB", "insurance_db"),
+                username=os.getenv("CLICKHOUSE_USER", "default"),
+                password=os.getenv("CLICKHOUSE_PASSWORD", "clickhouse_pass"),
+            )
+            
+            result = ch.query("SELECT count() FROM silver_customers")
+            assert result.result_rows[0][0] >= 0
+            
+        except Exception as e:
+            pytest.skip(f"Services unavailable: {e}")

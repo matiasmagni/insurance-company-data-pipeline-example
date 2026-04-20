@@ -3,10 +3,10 @@ dbt_insurance:
   
   outputs:
     dev:
-      type: postgres
+      type: clickhouse
       host: localhost
-      port: 5432
-      user: insurance_user
-      password: insurance_pass
+      port: 8123
+      user: default
+      password: clickhouse_pass
       dbname: insurance_db
-      schema: public
+      schema: ""

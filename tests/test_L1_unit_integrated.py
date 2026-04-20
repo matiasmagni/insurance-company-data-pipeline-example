@@ -1,12 +1,11 @@
 """
 ============================================================================
-Insurance Company Data Pipeline - L1 Unit Tests (Mocked Integrations)
+Insurance Company Data Pipeline - L1 Unit Tests (Integrated/Mocks)
 ============================================================================
-Copyright (c) 2026 BugMentor (https://bugmentor.com)
-
-L1: Mocked integrations - Test how components talk to each other
-     Mock PostgreSQL, MinIO, ClickHouse clients
-     Test orchestration flow
+L1: Unit tests with mocked dependencies (S3, Postgres).
+    - No real services required.
+    - Uses moto for S3 mocking.
+    - Uses pytest-mock for DB mocking.
 
 Usage:
     pytest tests/test_L1_unit_integrated.py -v
@@ -14,66 +13,58 @@ Usage:
 """
 
 import pytest
-from unittest.mock import MagicMock
+import os
+import boto3
 import pandas as pd
+from moto import mock_aws
+from unittest.mock import patch, MagicMock
+from pathlib import Path
+
+# Add src to path
+import sys
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+from src.transformations import apply_risk_buckets
+from scripts.silver_transform import transform_customers, MINIO_CONFIG
 
 
-class TestPostgreSQLMock:
-    """L1: Test PostgreSQL fetch operations."""
+class TestSilverTransformMocked:
+    """L1: Test silver transformation using mocks for S3 and DB."""
 
-    def test_fetch_customers(self):
-        mock_rows = [(1, "John", 750), (2, "Jane", 620)]
-        df = pd.DataFrame(mock_rows, columns=["id", "name", "score"])
-        assert len(df) == 2
+    @mock_aws
+    def test_transform_customers_flow(self, mocker):
+        """Test the full customer transform flow with S3 mocks."""
+        # 1. Setup Mock S3
+        s3 = boto3.client("s3", region_name="us-east-1")
+        s3.create_bucket(Bucket=MINIO_CONFIG["bucket"])
+        
+        # 2. Upload dummy raw data
+        df_raw = pd.DataFrame({
+            "customer_id": [1],
+            "credit_score": [800],
+            "email": ["test@example.com"]
+        })
+        df_raw.to_parquet("/tmp/test_raw_l1.parquet")
+        s3.upload_file("/tmp/test_raw_l1.parquet", MINIO_CONFIG["bucket"], "raw/customers/test.parquet")
+        
+        # 3. Mock get_minio_client to return our moto client
+        mocker.patch("scripts.silver_transform.get_minio_client", return_value=s3)
+        
+        # 4. Run transform
+        transform_customers()
+        
+        # 5. Verify S3 output
+        response = s3.list_objects_v2(Bucket=MINIO_CONFIG["bucket"], Prefix="silver/silver_customers/")
+        assert "Contents" in response
+        
+        # 6. Download and verify content
+        silver_key = response["Contents"][0]["Key"]
+        s3.download_file(MINIO_CONFIG["bucket"], silver_key, "/tmp/test_silver_l1.parquet")
+        df_silver = pd.read_parquet("/tmp/test_silver_l1.parquet")
+        
+        assert df_silver.iloc[0]["risk_bucket"] == "Excellent"
 
-    def test_fetch_claims(self):
-        mock_rows = [(1, 1, "Open", 5000), (2, 1, "Closed", 2500)]
-        df = pd.DataFrame(mock_rows, columns=["cid", "cust_id", "status", "amt"])
-        assert df["status"].tolist() == ["Open", "Closed"]
-
-
-class TestMinIOMock:
-    """L1: Test MinIO/S3 upload operations."""
-
-    def test_upload_parquet(self):
-        mock_s3 = MagicMock()
-        mock_s3.upload_file.return_value = None
-        mock_s3.upload_file("/tmp/test.parquet", "bucket", "key")
-        mock_s3.upload_file.assert_called_once()
-
-
-class TestClickHouseMock:
-    """L1: Test ClickHouse query operations."""
-
-    def test_query_gold(self):
-        mock_result = [("Excellent", 500), ("Good", 300)]
-        df = pd.DataFrame(mock_result, columns=["risk", "count"])
-        assert len(df) == 2
-
-
-class TestPipelineOrchestration:
-    """L1: Test pipeline steps."""
-
-    def test_extract_to_raw(self):
-        pg_data = pd.DataFrame({"id": [1, 2, 3]})
-        assert len(pg_data) == 3
-
-    def test_raw_to_silver(self):
-        raw_df = pd.DataFrame({"customer_id": [1, 2], "credit_score": [750, 620]})
-        raw_df["risk_bucket"] = raw_df["credit_score"].apply(
-            lambda x: "Excellent" if x >= 750 else "Good"
-        )
-        assert "risk_bucket" in raw_df.columns
-
-
-class TestDataQualityMock:
-    """L1: Test data quality checks."""
-
-    def test_detect_duplicates(self):
-        df = pd.DataFrame({"id": [1, 2, 1, 3]})
-        dups = df[df.duplicated(subset=["id"], keep=False)]
-        assert len(dups) > 0
-
-
-if __name__ == "__main__":
-    pytest.main([__file__, "-v", "--tb=short"])
+    def test_dlt_pipeline_structure(self):
+        """Verify DLT pipeline script has the correct structure and imports."""
+        from scripts.dlt_pipeline import run_dlt_pipeline
+        assert callable(run_dlt_pipeline)

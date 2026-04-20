@@ -1,3 +1,3 @@
 {{ config(materialized='view') }}
 
-SELECT * FROM {{ ref('silver_customers') }}
+SELECT * FROM {{ source('clickhouse_silver', 'silver_customers') }}

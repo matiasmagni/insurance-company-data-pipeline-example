@@ -327,76 +327,92 @@ docker-compose down
 
 ## 2. Architecture Overview
 
-This project implements a **three-tier data lakehouse architecture** with **two raw data sources**:
+This project implements a **data lakehouse architecture** with data flowing:
+
+```
+PostgreSQL + Kaggle → MinIO:raw/ → MinIO:silver/ → ClickHouse:gold
+```
 
 ```mermaid
 graph LR
-    subgraph "Layer 1: RAW SOURCE"
-        PG[("PostgreSQL\nport 5432")]
-        KG[("Kaggle CSV\ncustomer_profiles.csv")]
+    subgraph "Step 0: Source Data"
+        PG[PostgreSQL\nraw]
+        KG[Kaggle CSV\nraw]
     end
     
-    subgraph "Layer 2: STORAGE (MinIO)"
-        RAW[s3://insurance-data/raw/]
-        SIL[s3://insurance-data/silver/]
+    subgraph "Step 1: Extract to MinIO"
+        RAW[s3://raw/]
     end
     
-    subgraph "Layer 3: ANALYTICS (ClickHouse)"
-        GOLD[("ClickHouse\nport 8123")]
+    subgraph "Step 2: Transform in MinIO"
+        SIL[s3://silver/]
     end
     
-    DLT[DLT Pipeline]
-    DBT[DBT Transformations]
+    subgraph "Step 3: Analytics"
+        GOLD[ClickHouse\ngold tables]
+    end
     
-    PG -->|1a. Extract| DLT
-    KG -->|1b. Extract| DLT
-    DLT -->|2. Load Parquet| RAW
-    RAW -->|3. Transform| DBT
-    DBT -->|4. Write Parquet| SIL
-    SIL -->|5. Load Analytics| DBT
-    DBT -->|6. Write Tables| GOLD
+    PG -->|dlt_pipeline.py| RAW
+    KG -->|load_kaggle_to_minio.py| RAW
+    RAW -->|silver_transform.py| SIL
+    SIL -->|load_silver_to_ch.py| GOLD
+    GOLD -->|dbt gold| GOLD
 ```
 
 ---
 
-## 2. Data Flow Diagram
+## 2. Data Flow
 
 ```mermaid
 flowchart TB
-    subgraph "STEP 1a: PostgreSQL Source"
-        A[go run scripts/synthetic_data_generator.go] --> B[(PostgreSQL\ncustomers & claims)]
+    subgraph "Step 0: Generate"
+        PG["PostgreSQL<br/>customers, claims"]
+        KG["Kaggle CSV<br/>data/"]
     end
     
-    subgraph "STEP 1b: Kaggle CSV Source"
-        K1[python scripts/download_kaggle_data.py] --> K2[(Kaggle CSV\ncustomer_profiles.csv\nvehicle_insurance_claims.csv)]
+    subgraph "Step 1: Extract → MinIO raw/"
+        DLT[dlt_pipeline.py]
+        K2M[load_kaggle_to_minio.py]
     end
     
-    subgraph "STEP 2: Extract & Load to Raw"
-        C[python scripts/dlt_pipeline.py] --> D[s3://insurance-data/raw/customers/]
-        C --> E[s3://insurance-data/raw/claims/]
+    subgraph "Step 2: Transform → MinIO silver/"
+        SIL[silver_transform.py]
     end
     
-    subgraph "STEP 3: Transform to Silver"
-        F[dbt/models/silver/] --> G[s3://insurance-data/silver/customers/]
-        F --> H[s3://insurance-data/silver/claims/]
+    subgraph "Step 2.5: Load to ClickHouse"
+        LOAD[load_silver_to_clickhouse.py]
     end
     
-    subgraph "STEP 4: Load to Gold"
-        I[dbt/models/gold/] --> J[(ClickHouse\ncustomers)]
-        I --> K[(ClickHouse\nclaims)]
-        I --> L[(ClickHouse\nclaims_by_status)]
-        I --> M[(ClickHouse\nclaims_by_agent)]
+    subgraph "Step 3: Gold"
+        DBT[dbt run gold/]
     end
     
-    B --> C
-    K2 --> C
-    D --> F
-    E --> F
-    G --> I
-    H --> I
+    PG -->|go run scripts/synthetic_data_generator.go| DLT
+    KG -->|python scripts/download_kaggle_data.py| K2M
+    DLT -->|s3://raw/customers/| RAW[(MinIO raw/)]
+    DLT -->|s3://raw/claims/| RAW
+    K2M -->|s3://raw/kaggle_customers/| RAW
+    K2M -->|s3://raw/kaggle_claims/| RAW
+    RAW -->|python silver_transform.py| SIL
+    SIL -->|s3://silver/customers/| SILV[(MinIO silver/)]
+    SIL -->|s3://silver/claims/| SILV
+    SILV -->|python load_silver_to_clickhouse.py| LOAD
+    LOAD -->|ClickHouse tables| CH[(ClickHouse gold)]
+    CH -->|dbt run| DBT
 ```
 
-**Note:** The pipeline supports **two raw data sources**: PostgreSQL (primary) and Kaggle CSV (alternative). Both feed into the same MinIO raw layer.
+**Pipeline steps:**
+| Step | Command | Output |
+|------|---------|--------|
+| 0 | `go run scripts/synthetic_data_generator.go` | PostgreSQL |
+| 0 | `python scripts/download_kaggle_data.py` | data/*.csv |
+| 1a | `python scripts/dlt_pipeline.py` | s3://raw/customers/, raw/claims/ |
+| 1b | `python scripts/load_kaggle_to_minio.py` | s3://raw/kaggle_*/ |
+| 2 | `python scripts/silver_transform.py` | s3://silver/ (with risk_bucket, categories) |
+| 2.5 | `python scripts/load_silver_to_clickhouse.py` | ClickHouse tables |
+| 3 | `dbt run` | ClickHouse gold aggregations |
+
+**Note:** The pipeline supports **two raw data sources**: PostgreSQL and Kaggle CSV. Both feed into MinIO raw layer.
 
 ---
 
@@ -703,11 +719,11 @@ insurance-company-data-pipeline-example/
 │   ├── run_l3_tests.bat        # E2E tests
 │   └── run_all_tests.bat       # Run all tests
 │
-└── tests/                      # Test suite (77 tests)
-    ├── test_L0_unit_isolated.py    # L0: Isolated unit tests (30)
-    ├── test_L1_unit_integrated.py  # L1: Integrated unit tests (18)
-    ├── test_L2_integration.py     # L2: Integration tests (19)
-    └── test_L3_e2e.py           # L3: End-to-end tests (10)
+└── tests/                      # Test suite (40 tests)
+    ├── test_L0_unit_isolated.py    # L0: Isolated unit tests (25) - imports from src/
+    ├── test_L1_unit_integrated.py  # L1: Mocked integration tests (6)
+    ├── test_L2_integration.py     # L2: Real service tests (9)
+    └── test_L3_e2e.py           # L3: E2E tests
 ```
 
 ---
@@ -718,7 +734,7 @@ This project follows the **test pyramid** methodology with four levels of testin
 
 ```mermaid
 block-beta
-columns 13
+columns 13 
 
 space:4 L3["🔴 L3: End-to-End<br/>Full Pipeline"]:5 space:4
 space:3 L2["🟠 L2: Integration Services<br/>Real Services / Local Docker"]:7 space:3
@@ -739,6 +755,128 @@ style L0 fill:#ffeb3b,color:#000,stroke:#333,stroke-width:2px
 | **L1** | Unit with Mocks | Mocked dependencies, partial mocks - more tests |
 | **L2** | Integration Services | Real services, local Docker - some tests |
 | **L3** | End-to-End | Full pipeline - fewest tests |
+
+### 7.2. What Gets Tested at Each Level
+
+This section explains exactly what gets tested at each level, using the actual pipeline code.
+
+---
+
+#### 🟢 L0: Unit Isolation (Pure Functions / No I/O)
+
+At this level, you test **plain Python code** and **SQL logic**. You do not spin up Docker, you do not read CSV files from disk, and you do not connect to databases.
+
+**Python Transformation Logic:** Any custom Python functions that run during the pipeline (e.g., risk bucket calculation, claim categorization) are tested here. The key is that these functions are **imported from the actual source code** (`src/transformations.py`), not hardcoded inside the test file.
+
+**DBT Macro Logic:** Custom DBT macros can be tested using the `dbt-unittest` package.
+
+**Key Principles:**
+- Import actual functions from `src/transformations.py` - not copy-pasted code
+- Test pure functions: given X input → expect Y output
+- No I/O operations (no file reads, no network calls)
+- No Docker required
+
+**Example (from `tests/test_L0_unit_isolated.py`):**
+```python
+# Import the ACTUAL transformation function from src/
+from src.transformations import calculate_risk_bucket
+
+def test_excellent_credit_750_plus():
+    """Credit score 750+ should return 'Excellent'"""
+    result = calculate_risk_bucket(750)
+    assert result == "Excellent"
+```
+
+---
+
+#### 🟡 L1: Unit with Mocks (Mocked Dependencies)
+
+Here, you test that your pipeline connects to the right places, but you **fake the actual databases and storage**.
+
+**Mocking the DLT Extraction:** Mock the Postgres connection. Force the mock to return synthetic data with bad records (e.g., missing `customer_id`). Assert that your DLT pipeline code catches the error or handles schema enforcement correctly.
+
+**Mocking S3/MinIO Uploads:** Use the `moto` library to mock an S3 environment. Run your DLT extraction function and assert it attempts to write a Parquet file to `s3://insurance-data/raw/` without needing a live MinIO server.
+
+**Key Principles:**
+- Mock database connections (psycopg2)
+- Mock S3/MinIO clients (moto)
+- Test error handling paths
+- Verify correct bucket/key paths are used
+
+**Example (from `tests/test_L1_unit_integrated.py`):**
+```python
+# Mock PostgreSQL to return specific test data
+with mock.patch('psycopg2.connect') as mock_conn:
+    mock_conn.return_value = test_dataframe
+    result = extract_from_postgres()
+    assert result equals expected_data
+```
+
+---
+
+#### 🟠 L2: Integration Services (Local Docker)
+
+This is where you spin up isolated containers to prove that tool A can actually talk to tool B.
+
+**DLT → MinIO Integration:** Spin up a temporary MinIO container. Run your DLT pipeline against a hardcoded dummy CSV. Assert that a valid `.parquet` file exists in the `raw/` bucket.
+
+**DBT → ClickHouse Integration:** Spin up a temporary ClickHouse container. Seed it with a few rows of fake "Silver" data. Run `dbt run --models my_analytics_model`, then query ClickHouse to assert the materialized view was created.
+
+**Key Principles:**
+- Use `testcontainers` or local Docker
+- Test actual service-to-service communication
+- No production dependencies
+
+**Example (from `tests/test_L2_integration.py`):**
+```python
+# Spin up MinIO container
+with testcontainers.minio() as minio:
+    # Run DLT against container
+    run_dlt_pipeline(minio_url=minio.url)
+    # Verify output
+    assert minio.file_exists("raw/customers/test.parquet")
+```
+
+---
+
+#### 🔴 L3: End-to-End (Full Pipeline)
+
+The heaviest test. You spin up the entire `docker-compose.yml` (Postgres, MinIO, ClickHouse). This proves the whole pipeline works together.
+
+**The Full Flow Test:**
+1. Inject 5 new synthetic rows directly into the real PostgreSQL container
+2. Place a test `customer_profiles.csv` file in the expected local directory
+3. Programmatically trigger the orchestrator (`pipeline.py`) to run the full DAG
+4. Assert: Query the final layer in ClickHouse - exactly 5 new records propagated DLT → MinIO → DBT → Gold
+
+**Key Principles:**
+- Spin up full docker-compose
+- Test complete data flow
+- Verify end-to-end correctness
+
+**Example (from `tests/test_L3_e2e.py`):**
+```python
+# Insert test data
+postgres.insert("customers", test_rows)
+
+# Run pipeline
+subprocess.run(["python", "pipeline.py"])
+
+# Verify final output
+result = clickhouse.query("SELECT COUNT(*) FROM gold_customers")
+assert result == 5
+```
+
+### 7.3. Why This Matters
+
+| Level | Tests | Why |
+|-------|-------|-----|
+| **L0** | Fast (ms) | Most tests - catch logic errors early |
+| **L1** | Fast (ms) | Test integration points with mocks |
+| **L2** | Medium (s) | Test real service communication |
+| **L3** | Slow (min) | Verify entire pipeline works |
+
+The key insight: **L0 tests must import actual code from `src/transformations.py`**, not contain hardcoded logic inside the test file. This ensures the code being tested is exactly the code that runs in production.
 
 ---
 
