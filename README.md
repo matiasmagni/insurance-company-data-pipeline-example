@@ -2,6 +2,21 @@
 
 A production-grade data lakehouse pipeline demonstrating modern ELT/ETL architecture with insurance industry data.
 
+<div align="center">
+
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-15-336791?style=for-the-badge&logo=postgresql&logoColor=white)](https://www.postgresql.org/)
+[![MinIO](https://img.shields.io/badge/MinIO-ED1C24?style=for-the-badge&logo=min-io&logoColor=white)](https://min.io/)
+[![ClickHouse](https://img.shields.io/badge/ClickHouse-FFCC01?style=for-the-badge&logo=clickhouse&logoColor=black)](https://clickhouse.com/)
+[![DBT](https://img.shields.io/badge/dbt-F0F0F0?style=for-the-badge&logo=dbt&logoColor=black)](https://www.getdbt.com/)
+[![DLT](https://img.shields.io/badge/DLT-2E86DE?style=for-the-badge&logo=&logoColor=white)](https://dlthub.com/)
+[![Python](https://img.shields.io/badge/Python-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
+[![Go](https://img.shields.io/badge/Go-00ADD8?style=for-the-badge&logo=go&logoColor=white)](https://go.dev/)
+[![Docker](https://img.shields.io/badge/Docker-2496ED?style=for-the-badge&logo=docker&logoColor=white)](https://www.docker.com/)
+
+</div>
+
+---
+
 ```
 Copyright (c) 2026 BugMentor (https://bugmentor.com)
 Eng. Matías J. Magni | CEO @ BugMentor
