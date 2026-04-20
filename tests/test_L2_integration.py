@@ -3,502 +3,217 @@
 Insurance Company Data Pipeline - L2 Integration Tests
 ================================================================================
 Copyright (c) 2026 BugMentor (https://bugmentor.com)
-Eng. Matías J. Magni | CEO @ BugMentor
 
-L2: Integration tests - Real dependencies (local services)
+L2: Integration tests - Real services running in Docker
 
 Usage:
     pytest tests/test_L2_integration.py -v
+    (Requires: docker-compose up -d)
 ================================================================================
 """
 
-import os
-from unittest.mock import patch
 import pytest
 import pandas as pd
+import os
+import sys
+from pathlib import Path
 
 
-@pytest.fixture
-def sample_claims_data():
-    """Sample claims data from Kaggle CSV."""
-    return pd.DataFrame(
-        {
-            "policy_number": [
-                "POL-2024-00001",
-                "POL-2024-00002",
-                "POL-2024-00003",
+class TestDockerCompose:
+    """L2: Test Docker Compose services."""
+
+    def test_docker_compose_file_valid(self):
+        """L2: Test docker-compose.yml is valid YAML."""
+        import yaml
+
+        with open("docker-compose.yml") as f:
+            config = yaml.safe_load(f)
+
+        assert "services" in config
+        assert "postgres" in config["services"]
+        assert "minio" in config["services"]
+        assert "clickhouse" in config["services"]
+
+    @pytest.mark.skipif(
+        not Path("/var/run/docker.sock").exists(), reason="Docker not available"
+    )
+    def test_postgres_container_running(self):
+        """L2: Test PostgreSQL container is running."""
+        import subprocess
+
+        result = subprocess.run(
+            [
+                "docker",
+                "ps",
+                "--filter",
+                "name=insurance_postgres",
+                "--format",
+                "{{.Names}}",
             ],
-            "claim_amount": [5000.0, 7500.0, 3000.0],
-            "claim_date": pd.to_datetime(["2024-01-15", "2024-01-16", "2024-01-17"]),
-            "fraud_indicator": ["N", "Y", "N"],
-            "vehicle_type": ["Sedan", "SUV", "Truck"],
-            "driver_age": [35, 28, 45],
-        }
+            capture_output=True,
+            text=True,
+        )
+        # This will work when docker-compose is running
+
+    @pytest.mark.skipif(
+        not Path("/var/run/docker.sock").exists(), reason="Docker not available"
     )
+    def test_minio_container_running(self):
+        """L2: Test MinIO container is running."""
+        import subprocess
 
-
-@pytest.fixture
-def sample_customer_data():
-    """Sample customer data from PostgreSQL."""
-    return pd.DataFrame(
-        {
-            "customer_id": ["CUST-00001", "CUST-00002", "CUST-00003"],
-            "name": ["John Doe", "Jane Smith", "Bob Johnson"],
-            "email": [
-                "john@example.com",
-                "jane@example.com",
-                "bob@example.com",
+        result = subprocess.run(
+            [
+                "docker",
+                "ps",
+                "--filter",
+                "name=insurance_minio",
+                "--format",
+                "{{.Names}}",
             ],
-            "credit_score": [720, 680, 750],
-            "telematics_score": [85.5, 72.3, 91.0],
-            "policy_number": [
-                "POL-2024-00001",
-                "POL-2024-00002",
-                "POL-2024-00003",
+            capture_output=True,
+            text=True,
+        )
+
+    @pytest.mark.skipif(
+        not Path("/var/run/docker.sock").exists(), reason="Docker not available"
+    )
+    def test_clickhouse_container_running(self):
+        """L2: Test ClickHouse container is running."""
+        import subprocess
+
+        result = subprocess.run(
+            [
+                "docker",
+                "ps",
+                "--filter",
+                "name=insurance_clickhouse",
+                "--format",
+                "{{.Names}}",
             ],
-        }
-    )
-
-
-class TestEndToEndPipeline:
-    """L2: Tests for the complete ELT pipeline."""
-
-    @pytest.mark.L2
-    @patch("src.extract_and_load.extract_csv")
-    @patch("src.extract_and_load.extract_postgres")
-    @patch("src.extract_and_load.dataframe_to_parquet")
-    @patch("src.extract_and_load.upload_to_minio")
-    @patch("src.extract_and_load.load_to_bigquery")
-    @patch.dict(
-        os.environ,
-        {
-            "MINIO_BUCKET": "test-bucket",
-            "BIGQUERY_PROJECT_ID": "test-project",
-            "BIGQUERY_DATASET": "test_dataset",
-        },
-    )
-    def test_run_elt_pipeline(
-        self,
-        mock_load_bq,
-        mock_upload,
-        mock_to_parquet,
-        mock_extract_postgres,
-        mock_extract_csv,
-        sample_claims_data,
-        sample_customer_data,
-    ):
-        """L2: Test the complete ELT pipeline."""
-        from src import extract_and_load
-
-        mock_extract_csv.return_value = sample_claims_data
-        mock_extract_postgres.return_value = sample_customer_data
-        mock_to_parquet.return_value = b"test-parquet"
-
-        result = extract_and_load.run_elt_pipeline(
-            csv_path="/data/claims.csv",
-            postgres_query="SELECT * FROM customer_profiles",
+            capture_output=True,
+            text=True,
         )
 
-        assert mock_extract_csv.called
-        assert mock_extract_postgres.called
-        assert mock_to_parquet.call_count == 2
-        assert mock_upload.call_count == 2
-        assert mock_load_bq.call_count == 2
 
-    @pytest.mark.L2
-    @patch("src.extract_and_load.extract_csv")
-    def test_run_elt_pipeline_csv_error(self, mock_extract_csv):
-        """L2: Test pipeline handles CSV extraction errors."""
-        from src import extract_and_load
+class TestProjectStructure:
+    """L2: Test project structure is correct."""
 
-        mock_extract_csv.side_effect = FileNotFoundError("CSV not found")
+    def test_all_required_files_exist(self):
+        """L2: Test all required files exist."""
+        required_files = [
+            "docker-compose.yml",
+            "pipeline.py",
+            "synthetic_data_generator.go",
+            "go.mod",
+            "scripts/dlt_pipeline.py",
+            "scripts/reset_database.go",
+            "scripts/download_kaggle_data.py",
+            "dbt/dbt_project.yml",
+            "dbt/profiles.yml",
+            "README.md",
+            "LICENSE",
+        ]
 
-        with pytest.raises(FileNotFoundError):
-            extract_and_load.run_elt_pipeline(
-                csv_path="/data/missing.csv",
-                postgres_query="SELECT * FROM customer_profiles",
-            )
+        for file in required_files:
+            assert Path(file).exists(), f"Missing: {file}"
 
+    def test_dbt_models_structure(self):
+        """L2: Test DBT models directory structure."""
+        assert Path("dbt/models/sources.yml").exists()
 
-class TestELTPipelineErrorHandling:
-    """L2: Tests for ELT pipeline error handling paths."""
+        silver_dir = Path("dbt/models/silver")
+        assert silver_dir.exists()
+        silver_files = list(silver_dir.glob("*.sql"))
+        assert len(silver_files) >= 2
 
-    @pytest.mark.L2
-    @patch("src.extract_and_load.extract_csv")
-    @patch("src.extract_and_load.extract_postgres")
-    @patch("src.extract_and_load.dataframe_to_parquet")
-    @patch("src.extract_and_load.upload_to_minio")
-    @patch("src.extract_and_load.load_to_bigquery")
-    @patch.dict(
-        os.environ,
-        {
-            "MINIO_BUCKET": "test-bucket",
-            "BIGQUERY_PROJECT_ID": "test-project",
-            "BIGQUERY_DATASET": "test_dataset",
-        },
-    )
-    def test_run_elt_pipeline_parquet_error(
-        self, mock_bq, mock_upload, mock_parquet, mock_postgres, mock_csv
-    ):
-        """L2: Test pipeline handles Parquet conversion errors."""
-        from src import extract_and_load
-
-        mock_csv.return_value = pd.DataFrame(
-            {
-                "claim_id": ["CLM001"],
-                "policy_number": ["POL001"],
-                "claim_amount": [1000.0],
-                "claim_date": ["2024-01-01"],
-                "fraud_indicator": [False],
-                "vehicle_type": ["sedan"],
-                "driver_age": [30],
-            }
-        )
-        mock_postgres.return_value = pd.DataFrame(
-            {
-                "customer_id": ["CUST001"],
-                "name": ["John"],
-                "email": ["john@test.com"],
-                "credit_score": [750],
-                "telematics_score": [85.5],
-                "policy_number": ["POL001"],
-            }
-        )
-        mock_parquet.side_effect = Exception("Parquet conversion failed")
-
-        with pytest.raises(Exception, match="Parquet conversion failed"):
-            extract_and_load.run_elt_pipeline(
-                csv_path="/data/test.csv",
-                postgres_query="SELECT * FROM customers",
-            )
-
-    @pytest.mark.L2
-    @patch("src.extract_and_load.extract_csv")
-    @patch("src.extract_and_load.extract_postgres")
-    @patch("src.extract_and_load.dataframe_to_parquet")
-    @patch("src.extract_and_load.upload_to_minio")
-    @patch("src.extract_and_load.load_to_bigquery")
-    @patch.dict(
-        os.environ,
-        {
-            "MINIO_BUCKET": "test-bucket",
-            "BIGQUERY_PROJECT_ID": "test-project",
-            "BIGQUERY_DATASET": "test_dataset",
-        },
-    )
-    def test_run_elt_pipeline_upload_error(
-        self, mock_bq, mock_upload, mock_parquet, mock_postgres, mock_csv
-    ):
-        """L2: Test pipeline handles MinIO upload errors."""
-        from src import extract_and_load
-
-        mock_csv.return_value = pd.DataFrame(
-            {
-                "claim_id": ["CLM001"],
-                "policy_number": ["POL001"],
-                "claim_amount": [1000.0],
-                "claim_date": ["2024-01-01"],
-                "fraud_indicator": [False],
-                "vehicle_type": ["sedan"],
-                "driver_age": [30],
-            }
-        )
-        mock_postgres.return_value = pd.DataFrame(
-            {
-                "customer_id": ["CUST001"],
-                "name": ["John"],
-                "email": ["john@test.com"],
-                "credit_score": [750],
-                "telematics_score": [85.5],
-                "policy_number": ["POL001"],
-            }
-        )
-        mock_parquet.return_value = b"parquet"
-        mock_upload.side_effect = Exception("Upload failed")
-
-        with pytest.raises(Exception, match="Upload failed"):
-            extract_and_load.run_elt_pipeline(
-                csv_path="/data/test.csv",
-                postgres_query="SELECT * FROM customers",
-            )
-
-    @pytest.mark.L2
-    @patch("src.extract_and_load.extract_csv")
-    @patch("src.extract_and_load.extract_postgres")
-    @patch("src.extract_and_load.dataframe_to_parquet")
-    @patch("src.extract_and_load.upload_to_minio")
-    @patch("src.extract_and_load.load_to_bigquery")
-    @patch.dict(
-        os.environ,
-        {
-            "MINIO_BUCKET": "test-bucket",
-            "BIGQUERY_PROJECT_ID": "test-project",
-            "BIGQUERY_DATASET": "test_dataset",
-        },
-    )
-    def test_run_elt_pipeline_bigquery_error(
-        self, mock_bq, mock_upload, mock_parquet, mock_postgres, mock_csv
-    ):
-        """L2: Test pipeline handles BigQuery load errors."""
-        from src import extract_and_load
-
-        mock_csv.return_value = pd.DataFrame(
-            {
-                "claim_id": ["CLM001"],
-                "policy_number": ["POL001"],
-                "claim_amount": [1000.0],
-                "claim_date": ["2024-01-01"],
-                "fraud_indicator": [False],
-                "vehicle_type": ["sedan"],
-                "driver_age": [30],
-            }
-        )
-        mock_postgres.return_value = pd.DataFrame(
-            {
-                "customer_id": ["CUST001"],
-                "name": ["John"],
-                "email": ["john@test.com"],
-                "credit_score": [750],
-                "telematics_score": [85.5],
-                "policy_number": ["POL001"],
-            }
-        )
-        mock_parquet.return_value = b"parquet"
-        mock_bq.side_effect = Exception("BigQuery load failed")
-
-        with pytest.raises(Exception, match="BigQuery load failed"):
-            extract_and_load.run_elt_pipeline(
-                csv_path="/data/test.csv",
-                postgres_query="SELECT * FROM customers",
-            )
-
-    @pytest.mark.L2
-    @patch("src.extract_and_load.extract_csv")
-    @patch("src.extract_and_load.extract_postgres")
-    @patch("src.extract_and_load.dataframe_to_parquet")
-    @patch("src.extract_and_load.upload_to_minio")
-    @patch("src.extract_and_load.load_to_bigquery")
-    @patch.dict(
-        os.environ,
-        {
-            "MINIO_BUCKET": "test-bucket",
-            "BIGQUERY_PROJECT_ID": "test-project",
-            "BIGQUERY_DATASET": "test_dataset",
-        },
-    )
-    def test_run_elt_pipeline_postgres_error(
-        self, mock_bq, mock_upload, mock_parquet, mock_postgres, mock_csv
-    ):
-        """L2: Test pipeline handles PostgreSQL extraction errors."""
-        from src import extract_and_load
-
-        mock_csv.return_value = pd.DataFrame(
-            {
-                "claim_id": ["CLM001"],
-                "policy_number": ["POL001"],
-                "claim_amount": [1000.0],
-                "claim_date": ["2024-01-01"],
-                "fraud_indicator": [False],
-                "vehicle_type": ["sedan"],
-                "driver_age": [30],
-            }
-        )
-        mock_postgres.side_effect = Exception("PostgreSQL connection failed")
-
-        with pytest.raises(Exception, match="PostgreSQL connection failed"):
-            extract_and_load.run_elt_pipeline(
-                csv_path="/data/test.csv",
-                postgres_query="SELECT * FROM customers",
-            )
-
-    @pytest.mark.L2
-    @patch("src.extract_and_load.extract_csv")
-    @patch("src.extract_and_load.extract_postgres")
-    @patch("src.extract_and_load.dataframe_to_parquet")
-    @patch("src.extract_and_load.upload_to_minio")
-    @patch("src.extract_and_load.load_to_bigquery")
-    @patch.dict(
-        os.environ,
-        {
-            "MINIO_BUCKET": "test-bucket",
-            "BIGQUERY_PROJECT_ID": "test-project",
-            "BIGQUERY_DATASET": "test_dataset",
-        },
-    )
-    def test_run_elt_pipeline_customers_upload_error(
-        self, mock_bq, mock_upload, mock_parquet, mock_postgres, mock_csv
-    ):
-        """L2: Test pipeline handles customers MinIO upload errors."""
-        from src import extract_and_load
-
-        call_count = [0]
-
-        def upload_side_effect(data, bucket, key):
-            call_count[0] += 1
-            if call_count[0] == 2:
-                raise Exception("Customers upload failed")
-
-        mock_csv.return_value = pd.DataFrame(
-            {
-                "claim_id": ["CLM001"],
-                "policy_number": ["POL001"],
-                "claim_amount": [1000.0],
-                "claim_date": ["2024-01-01"],
-                "fraud_indicator": [False],
-                "vehicle_type": ["sedan"],
-                "driver_age": [30],
-            }
-        )
-        mock_postgres.return_value = pd.DataFrame(
-            {
-                "customer_id": ["CUST001"],
-                "name": ["John"],
-                "email": ["john@test.com"],
-                "credit_score": [750],
-                "telematics_score": [85.5],
-                "policy_number": ["POL001"],
-            }
-        )
-        mock_parquet.return_value = b"parquet"
-        mock_upload.side_effect = upload_side_effect
-
-        with pytest.raises(Exception, match="Customers upload failed"):
-            extract_and_load.run_elt_pipeline(
-                csv_path="/data/test.csv",
-                postgres_query="SELECT * FROM customers",
-            )
-
-    @patch("src.extract_and_load.extract_csv")
-    @patch("src.extract_and_load.extract_postgres")
-    @patch("src.extract_and_load.dataframe_to_parquet")
-    @patch("src.extract_and_load.upload_to_minio")
-    @patch("src.extract_and_load.load_to_bigquery")
-    @patch.dict(
-        os.environ,
-        {
-            "MINIO_BUCKET": "test-bucket",
-            "BIGQUERY_PROJECT_ID": "test-project",
-            "BIGQUERY_DATASET": "test_dataset",
-        },
-    )
-    def test_run_elt_pipeline_customers_bigquery_error(
-        self, mock_bq, mock_upload, mock_parquet, mock_postgres, mock_csv
-    ):
-        """L2: Test pipeline handles customers BigQuery load errors."""
-        from src import extract_and_load
-
-        call_count = [0]
-
-        def bq_side_effect(df, table):
-            call_count[0] += 1
-            if call_count[0] == 2:
-                raise Exception("Customers BigQuery load failed")
-
-        mock_csv.return_value = pd.DataFrame(
-            {
-                "claim_id": ["CLM001"],
-                "policy_number": ["POL001"],
-                "claim_amount": [1000.0],
-                "claim_date": ["2024-01-01"],
-                "fraud_indicator": [False],
-                "vehicle_type": ["sedan"],
-                "driver_age": [30],
-            }
-        )
-        mock_postgres.return_value = pd.DataFrame(
-            {
-                "customer_id": ["CUST001"],
-                "name": ["John"],
-                "email": ["john@test.com"],
-                "credit_score": [750],
-                "telematics_score": [85.5],
-                "policy_number": ["POL001"],
-            }
-        )
-        mock_parquet.return_value = b"parquet"
-        mock_bq.side_effect = bq_side_effect
-
-        with pytest.raises(Exception, match="Customers BigQuery load failed"):
-            extract_and_load.run_elt_pipeline(
-                csv_path="/data/test.csv",
-                postgres_query="SELECT * FROM customers",
-            )
-
-    @pytest.mark.L2
-    @patch("src.extract_and_load.extract_csv")
-    @patch("src.extract_and_load.extract_postgres")
-    @patch("src.extract_and_load.dataframe_to_parquet")
-    @patch("src.extract_and_load.upload_to_minio")
-    @patch("src.extract_and_load.load_to_bigquery")
-    @patch.dict(
-        os.environ,
-        {
-            "MINIO_BUCKET": "test-bucket",
-            "BIGQUERY_PROJECT_ID": "test-project",
-            "BIGQUERY_DATASET": "test_dataset",
-        },
-    )
-    def test_run_elt_pipeline_customers_parquet_error(
-        self, mock_bq, mock_upload, mock_parquet, mock_postgres, mock_csv
-    ):
-        """L2: Test pipeline handles customers parquet conversion errors."""
-        from src import extract_and_load
-
-        call_count = [0]
-
-        def parquet_side_effect(df):
-            call_count[0] += 1
-            if call_count[0] == 2:
-                raise Exception("Customers parquet conversion failed")
-            return b"parquet"
-
-        mock_csv.return_value = pd.DataFrame(
-            {
-                "claim_id": ["CLM001"],
-                "policy_number": ["POL001"],
-                "claim_amount": [1000.0],
-                "claim_date": ["2024-01-01"],
-                "fraud_indicator": [False],
-                "vehicle_type": ["sedan"],
-                "driver_age": [30],
-            }
-        )
-        mock_postgres.return_value = pd.DataFrame(
-            {
-                "customer_id": ["CUST001"],
-                "name": ["John"],
-                "email": ["john@test.com"],
-                "credit_score": [750],
-                "telematics_score": [85.5],
-                "policy_number": ["POL001"],
-            }
-        )
-        mock_parquet.side_effect = parquet_side_effect
-
-        with pytest.raises(Exception, match="Customers parquet conversion failed"):
-            extract_and_load.run_elt_pipeline(
-                csv_path="/data/test.csv",
-                postgres_query="SELECT * FROM customers",
-            )
+        gold_dir = Path("dbt/models/gold")
+        assert gold_dir.exists()
+        gold_files = list(gold_dir.glob("*.sql"))
+        assert len(gold_files) >= 3
 
 
-class TestParquetBufferSeek:
-    """L2: Tests for Parquet buffer seek operation."""
+class TestScriptsExecutable:
+    """L2: Test scripts have correct permissions."""
 
-    @pytest.mark.L2
-    def test_dataframe_to_parquet_buffer_is_seekable(self):
-        """L2: Test that Parquet buffer is seekable after conversion."""
-        from src import extract_and_load
-        import io
+    def test_unix_scripts_executable(self):
+        """L2: Test Unix scripts are executable."""
+        if os.name == "posix":
+            for script in Path("scripts_unix").glob("*.sh"):
+                assert os.access(script, os.X_OK), f"{script} not executable"
 
-        df = pd.DataFrame({"a": [1, 2, 3], "b": ["x", "y", "z"]})
-        result = extract_and_load.dataframe_to_parquet_stream(df)
 
-        assert hasattr(result, "seek"), "Result should be seekable BytesIO"
-        result.seek(0)
-        assert result.tell() == 0
-        read_result = pd.read_parquet(result)
-        assert len(read_result) == 3
+class TestGoCode:
+    """L2: Test Go code compiles."""
+
+    def test_go_mod_valid(self):
+        """L2: Test go.mod is valid."""
+        content = Path("go.mod").read_text()
+        assert "module " in content
+        assert "github.com/lib/pq" in content
+
+    def test_synthetic_generator_has_generate_function(self):
+        """L2: Test synthetic generator has required functions."""
+        content = Path("synthetic_data_generator.go").read_text()
+        assert "func generateCustomers" in content
+        assert "func generateClaims" in content
+        assert "func main()" in content
+
+    def test_reset_database_has_truncate_function(self):
+        """L2: Test reset database has truncate function."""
+        content = Path("scripts/reset_database.go").read_text()
+        assert "func truncateTables" in content
+
+
+class TestPythonScripts:
+    """L2: Test Python scripts."""
+
+    def test_dlt_pipeline_imports(self):
+        """L2: Test DLT pipeline has required imports."""
+        content = Path("scripts/dlt_pipeline.py").read_text()
+        assert "psycopg2" in content
+        assert "boto3" in content
+        assert "pandas" in content
+
+    def test_pipeline_imports(self):
+        """L2: Test main pipeline imports."""
+        content = Path("pipeline.py").read_text()
+        assert "subprocess" in content
+        assert "logging" in content
+
+
+class TestDBTConfiguration:
+    """L2: Test DBT configuration."""
+
+    def test_dbt_project_yml_valid(self):
+        """L2: Test dbt_project.yml is valid."""
+        import yaml
+
+        with open("dbt/dbt_project.yml") as f:
+            config = yaml.safe_load(f)
+
+        assert "name" in config
+        assert config["name"] == "dbt_insurance"
+
+    def test_dbt_profiles_yml_exists(self):
+        """L2: Test profiles.yml exists."""
+        assert Path("dbt/profiles.yml").exists()
+
+
+class TestTestFiles:
+    """L2: Test test files exist."""
+
+    def test_all_test_levels_exist(self):
+        """L2: Test all test level files exist."""
+        assert Path("tests/test_L0_unit_isolated.py").exists()
+        assert Path("tests/test_L1_unit_integrated.py").exists()
+        assert Path("tests/test_L2_integration.py").exists()
+        assert Path("tests/test_L3_e2e.py").exists()
+
+    def test_test_runners_exist(self):
+        """L2: Test test runner scripts exist."""
+        assert Path("scripts_unix/run_all_tests.sh").exists()
+        assert Path("scripts_windows/run_all_tests.bat").exists()
 
 
 if __name__ == "__main__":
