@@ -49,10 +49,6 @@ htmlcov/
 .DS_Store
 Thumbs.db
 
-# Mage
-mage/data/
-mage/logs/
-
 # dbt
 dbt_packages/
 target/
@@ -67,3 +63,7 @@ coverage_main_err
 html/*.html
 !html/index.html
 htmlcov/
+
+# Data folders
+data/
+kaggle_data/

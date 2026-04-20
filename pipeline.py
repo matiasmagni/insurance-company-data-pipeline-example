@@ -37,7 +37,7 @@ def run_dbt_transformations():
     logger.info("Step 2: Running DBT Transformations")
     logger.info("=" * 60)
 
-    dbt_dir = Path(__file__).parent / "dbt_insurance"
+    dbt_dir = Path(__file__).parent / "dbt"
 
     if not dbt_dir.exists():
         logger.warning("DBT project not found, skipping transformations")

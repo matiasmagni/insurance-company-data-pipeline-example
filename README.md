@@ -61,11 +61,11 @@ graph LR
 ```mermaid
 flowchart TB
     subgraph "STEP 1: Generate Source Data"
-        A[scripts/generate_sample_data.py] --> B[(PostgreSQL\ncustomers & claims)]
+        A[go run synthetic_data_generator.go] --> B[(PostgreSQL\ncustomers & claims)]
     end
     
     subgraph "STEP 2: Extract & Load to Raw"
-        C[scripts/dlt_pipeline.py] --> D[s3://insurance-data/raw/customers/]
+        C[python scripts/dlt_pipeline.py] --> D[s3://insurance-data/raw/customers/]
         C --> E[s3://insurance-data/raw/claims/]
     end
     
@@ -125,11 +125,10 @@ insurance-company-data-pipeline-example/
 ├── synthetic_data_generator.go # Go-based synthetic data generator
 ├── README.md                   # This file
 │
-├── scripts/                    # Python scripts
-│   ├── generate_sample_data.py # Generate PostgreSQL test data
-│   ├── download_kaggle_data.py # Download Kaggle insurance dataset
+├── scripts/                    # Python/Go scripts
 │   ├── dlt_pipeline.py         # DLT pipeline: PostgreSQL → MinIO raw
-│   └── load_to_minio.py        # Legacy MinIO loader
+│   ├── download_kaggle_data.py # Download Kaggle insurance dataset
+│   └── reset_database.go      # Reset PostgreSQL and regenerate data
 │
 ├── dbt/                      # DBT project
 │   ├── dbt_project.yml
@@ -213,14 +212,21 @@ docker-compose ps
 ### Step 2: Generate Source Data
 
 ```bash
-# Activate virtual environment
-source .venv/bin/activate
-
-# Generate sample data in PostgreSQL
-python scripts/generate_sample_data.py
+# Using Go synthetic data generator (1000 customers, 5000 claims)
+go run synthetic_data_generator.go
 ```
 
-### Step 3: Run Pipeline
+### Step 3: Reset & Regenerate Database
+
+```bash
+# Reset database (truncate all tables)
+go run scripts/reset_database.go
+
+# Reset and regenerate data
+go run scripts/reset_database.go --regenerate
+```
+
+### Step 4: Run Pipeline
 
 ```bash
 # Run full pipeline: PostgreSQL → MinIO (raw) → MinIO (silver) → ClickHouse (gold)
@@ -228,7 +234,7 @@ python pipeline.py
 
 # Or run steps individually:
 python scripts/dlt_pipeline.py       # PostgreSQL → MinIO raw
-cd dbt_insurance && dbt run         # MinIO raw → MinIO silver → ClickHouse gold
+cd dbt && dbt run              # MinIO raw → MinIO silver → ClickHouse gold
 ```
 
 ---
