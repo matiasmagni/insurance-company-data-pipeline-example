@@ -556,3 +556,75 @@
 ============================================================
 2026-04-20 15:35:00,207 - INFO - PIPELINE COMPLETED SUCCESSFULLY!
 2026-04-20 15:35:00,207 - INFO - ============================================================
+2026-04-20 18:40:23,796 - INFO - ============================================================
+2026-04-20 18:40:23,796 - INFO - Insurance Company Data Pipeline
+2026-04-20 18:40:23,797 - INFO - ============================================================
+2026-04-20 18:40:23,797 - INFO - 
+>>> Step 0: Download Kaggle data
+2026-04-20 18:40:23,797 - INFO - ------------------------------------------------------------
+2026-04-20 18:40:23,797 - INFO - Running script: download_kaggle_data.py
+2026-04-20 18:40:24,126 - INFO - Script download_kaggle_data.py completed successfully
+2026-04-20 18:40:24,126 - INFO - 
+>>> Step 1a: Extract PG to MinIO (DLT)
+2026-04-20 18:40:24,127 - INFO - ------------------------------------------------------------
+2026-04-20 18:40:24,127 - INFO - Running script: dlt_pipeline.py
+2026-04-20 18:40:26,165 - INFO - Script dlt_pipeline.py completed successfully
+2026-04-20 18:40:26,165 - INFO - 
+>>> Step 1b: Extract Kaggle to MinIO
+2026-04-20 18:40:26,165 - INFO - ------------------------------------------------------------
+2026-04-20 18:40:26,165 - INFO - Running script: load_kaggle_to_minio.py
+2026-04-20 18:40:26,586 - INFO - Script load_kaggle_to_minio.py completed successfully
+2026-04-20 18:40:26,586 - INFO - 
+>>> Step 2: Transform Raw to Silver (Python)
+2026-04-20 18:40:26,586 - INFO - ------------------------------------------------------------
+2026-04-20 18:40:26,586 - INFO - Running script: silver_transform.py
+2026-04-20 18:40:27,448 - INFO - Script silver_transform.py completed successfully
+2026-04-20 18:40:27,448 - INFO - 
+>>> Step 2.5: Load Silver to ClickHouse
+2026-04-20 18:40:27,448 - INFO - ------------------------------------------------------------
+2026-04-20 18:40:27,448 - INFO - Running script: load_silver_to_clickhouse.py
+2026-04-20 18:40:28,117 - INFO - Script load_silver_to_clickhouse.py completed successfully
+2026-04-20 18:40:28,117 - INFO - 
+>>> Step 3: DBT Analytics Aggregations
+2026-04-20 18:40:28,121 - WARNING - DBT failed ([Errno 2] No such file or directory: 'dbt'), falling back to direct ClickHouse queries...
+2026-04-20 18:40:28,219 - INFO - Fallback analytics aggregations completed successfully via direct SQL
+2026-04-20 18:40:28,219 - INFO - 
+============================================================
+2026-04-20 18:40:28,219 - INFO - PIPELINE COMPLETED SUCCESSFULLY!
+2026-04-20 18:40:28,219 - INFO - ============================================================
+2026-04-20 22:04:48,046 - INFO - ============================================================
+2026-04-20 22:04:48,046 - INFO - Insurance Company Data Pipeline
+2026-04-20 22:04:48,046 - INFO - ============================================================
+2026-04-20 22:04:48,046 - INFO - 
+>>> Step 0: Download Kaggle data
+2026-04-20 22:04:48,046 - INFO - ------------------------------------------------------------
+2026-04-20 22:04:48,046 - INFO - Running script: download_kaggle_data.py
+2026-04-20 22:04:48,317 - INFO - Script download_kaggle_data.py completed successfully
+2026-04-20 22:04:48,318 - INFO - 
+>>> Step 1a: Extract PG to MinIO (DLT)
+2026-04-20 22:04:48,318 - INFO - ------------------------------------------------------------
+2026-04-20 22:04:48,318 - INFO - Running script: dlt_pipeline.py
+2026-04-20 22:04:50,597 - INFO - Script dlt_pipeline.py completed successfully
+2026-04-20 22:04:50,598 - INFO - 
+>>> Step 1b: Extract Kaggle to MinIO
+2026-04-20 22:04:50,598 - INFO - ------------------------------------------------------------
+2026-04-20 22:04:50,598 - INFO - Running script: load_kaggle_to_minio.py
+2026-04-20 22:04:51,177 - INFO - Script load_kaggle_to_minio.py completed successfully
+2026-04-20 22:04:51,178 - INFO - 
+>>> Step 2: Transform Raw to Silver (Python)
+2026-04-20 22:04:51,178 - INFO - ------------------------------------------------------------
+2026-04-20 22:04:51,178 - INFO - Running script: silver_transform.py
+2026-04-20 22:04:52,743 - INFO - Script silver_transform.py completed successfully
+2026-04-20 22:04:52,743 - INFO - 
+>>> Step 2.5: Load Silver to ClickHouse
+2026-04-20 22:04:52,743 - INFO - ------------------------------------------------------------
+2026-04-20 22:04:52,743 - INFO - Running script: load_silver_to_clickhouse.py
+2026-04-20 22:04:53,739 - INFO - Script load_silver_to_clickhouse.py completed successfully
+2026-04-20 22:04:53,740 - INFO - 
+>>> Step 3: DBT Analytics Aggregations
+2026-04-20 22:04:53,751 - WARNING - DBT failed ([Errno 2] No such file or directory: 'dbt'), falling back to direct ClickHouse queries...
+2026-04-20 22:04:53,969 - INFO - Fallback analytics aggregations completed successfully via direct SQL
+2026-04-20 22:04:53,969 - INFO - 
+============================================================
+2026-04-20 22:04:53,969 - INFO - PIPELINE COMPLETED SUCCESSFULLY!
+2026-04-20 22:04:53,969 - INFO - ============================================================

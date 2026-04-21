@@ -925,7 +925,7 @@ The heaviest test. You spin up the entire `docker-compose.yml` (Postgres, MinIO,
 1. Inject 5 new synthetic rows directly into the real PostgreSQL container
 2. Place a test `customer_profiles.csv` file in the expected local directory
 3. Programmatically trigger the orchestrator (`pipeline.py`) to run the full DAG
-4. Assert: Query the final layer in ClickHouse - exactly 5 new records propagated DLT → MinIO → DBT → Gold
+4. Assert: Query the final layer in ClickHouse - exactly 5 new records propagated DLT → MinIO → DBT → Analytics
 
 **Key Principles:**
 - Spin up full docker-compose
@@ -1041,7 +1041,7 @@ s3://insurance-data/
         └── claims_with_agents.parquet
 ```
 
-### 9.3. ClickHouse (Gold Analytics Layer)
+### 9.3. ClickHouse (Analytics Layer)
 
 | Parameter | Value |
 |-----------|-------|
