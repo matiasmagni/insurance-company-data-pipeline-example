@@ -336,29 +336,49 @@ PostgreSQL + Kaggle → MinIO:raw/ → MinIO:silver/ → ClickHouse:analytics
 ```
 
 ```mermaid
-graph LR
-    subgraph "Step 0: Source Data"
-        PG[PostgreSQL\nraw]
-        KG[Kaggle CSV\nraw]
+%%{init: {'theme': 'base', 'themeVariables': { 'primaryColor': '#4a90e2', 'edgeLabelBackground': '#f8f9fa'}}}%%
+flowchart LR
+    subgraph SOURCE["📥 Step 0: Source Data"]
+        direction TB
+        PG[(PostgreSQL<br/>customers, claims)]
+        KG[(Kaggle CSV<br/>external data)]
     end
     
-    subgraph "Step 1: Extract to MinIO"
-        RAW[s3://raw/]
+    subgraph RAW["📦 Step 1: Raw (MinIO)"]
+        RAW0(s3://raw/customers/)
+        RAW1(s3://raw/claims/)
+        RAW2(s3://raw/kaggle_*/)
     end
     
-    subgraph "Step 2: Transform in MinIO"
-        SIL[s3://silver/]
+    subgraph SILVER["⚙️ Step 2: Silver (MinIO)"]
+        SIL0(s3://silver/customers/)
+        SIL1(s3://silver/claims/)
     end
     
-    subgraph "Step 3: Analytics"
-        Analytics[ClickHouse\nanalytics tables]
+    subgraph ANALYTICS["📊 Step 3: Analytics (ClickHouse)"]
+        CH[(silver_customers<br/>silver_claims)]
+        VIEW{analytics_views}
     end
     
-    PG -->|dlt_pipeline.py| RAW
-    KG -->|load_kaggle_to_minio.py| RAW
-    RAW -->|processed_transform.py| PROC[Processed]
-    PROC -->|load_to_clickhouse.py| ANALYT[Analytics]
-    ANALYT -->|dbt analytics| ANALYTICS
+    %% Connections
+    PG -->|dlt_pipeline.py| RAW0
+    KG -->|load_kaggle_to_minio.py| RAW2
+    RAW0 -->|silver_transform.py| SIL0
+    RAW1 -->|silver_transform.py| SIL1
+    SIL0 -->|load_to_clickhouse.py| CH
+    SIL1 -->|load_to_clickhouse.py| CH
+    CH -->|dbt run| VIEW
+    
+    %% Styling
+    classDef src fill:#e3f2fd,stroke:#1976d2,stroke-width:2px
+    classDef raw fill:#fff3e0,stroke:#ff9800,stroke-width:2px
+    classDef silver fill:#e8f5e9,stroke:#4caf50,stroke-width:2px
+    classDef analytics fill:#f3e5f5,stroke:#9c27b0,stroke-width:2px
+    
+    class PG,KG:::src
+    class RAW0,RAW1,RAW2:::raw
+    class SIL0,SIL1:::silver
+    class CH,VIEW:::analytics
 ```
 
 ---
@@ -366,41 +386,62 @@ graph LR
 ## 2. Data Flow
 
 ```mermaid
+%%{init: {'theme': 'base', 'themeVariables': { 'primaryColor': '#4a90e2'}}}%%
 flowchart TB
-    subgraph "Step 0: Generate"
+    subgraph S0["📥 STEP 0: Generate Data"]
         PG["PostgreSQL<br/>customers, claims"]
         KG["Kaggle CSV<br/>data/"]
     end
     
-    subgraph "Step 1: Extract → MinIO raw/"
+    subgraph S1["📦 STEP 1: Extract → MinIO Raw"]
         DLT[dlt_pipeline.py]
         K2M[load_kaggle_to_minio.py]
+        RAW{{"MinIO<br/>s3://raw/"}}
     end
     
-    subgraph "Step 2: Transform → MinIO processed/"
-        PROC[processed_transform.py]
+    subgraph S2["⚙️ STEP 2: Transform → MinIO Silver"]
+        TRANSFORM[ silver_transform.py]
+        SIL{{"MinIO<br/>s3://silver/"}}
     end
     
-    subgraph "Step 2.5: Load to ClickHouse"
+    subgraph S25["📤 STEP 2.5: Load to ClickHouse"]
         LOAD[load_to_clickhouse.py]
+        CH{{"ClickHouse<br/>silver tables"}}
     end
     
-    subgraph "Step 3: Analytics"
-        DBT[dbt run analytics/]
+    subgraph S3["📊 STEP 3: Analytics"]
+        DBT[dbt run models/analytics/]
+        ANALYTICS{{"Analytics<br/>Views"}}
     end
     
-    PG -->|go run scripts/synthetic_data_generator.go| DLT
-    KG -->|python scripts/download_kaggle_data.py| K2M
-    DLT -->|s3://raw/customers/| RAW[(MinIO raw/)]
-    DLT -->|s3://raw/claims/| RAW
-    K2M -->|s3://raw/kaggle_customers/| RAW
-    K2M -->|s3://raw/kaggle_claims/| RAW
-    RAW -->|python processed_transform.py| PROC_STORAGE[(MinIO processed/)]
-    PROC -->|s3://processed/customers/| PROC_STORAGE
-    PROC -->|s3://processed/claims/| PROC_STORAGE
-    PROC_STORAGE -->|python load_to_clickhouse.py| LOAD
-    LOAD -->|ClickHouse tables| CH[(ClickHouse Analytics)]
-    CH -->|dbt run| DBT
+    %% Flow
+    PG --->|synthetic_data_generator.go| DLT
+    KG --->|download_kaggle_data.py| K2M
+    DLT --->|s3://raw/customers/| RAW
+    DLT --->|s3://raw/claims/| RAW
+    K2M --->|s3://raw/kaggle_*/| RAW
+    RAW --->|silver_transform.py| TRANSFORM
+    TRANSFORM --->|s3://silver/customers/| SIL
+    TRANSFORM --->|s3://silver/claims/| SIL
+    SIL --->|load_to_clickhouse.py| LOAD
+    LOAD --->|Insert| CH
+    CH --->|dbt run| DBT
+    DBT --->|Create Views| ANALYTICS
+    
+    %% Styling
+    classDef src fill:#e3f2fd,stroke:#1976d2,stroke-width:2px
+    classDef raw fill:#fff3e0,stroke:#ff9800,stroke-width:2px
+    classDef silver fill:#e8f5e9,stroke:#4caf50,stroke-width:2px
+    classDef load fill:#e0f7fa,stroke:#00acc1,stroke-width:2px
+    classDef analytics fill:#f3e5f5,stroke:#9c27b0,stroke-width:2px
+    
+    class PG,KG:::src
+    class DLT,K2M:::raw
+    class RAW:::raw
+    class TRANSFORM:::silver
+    class SIL:::silver
+    class LOAD:::load
+    class CH,ANALYTICS,DBT:::analytics
 ```
 
 **Pipeline steps:**
@@ -421,18 +462,43 @@ flowchart TB
 ## 3. Infrastructure Components
 
 ```mermaid
+%%{init: {'theme': 'base', 'themeVariables': { 'primaryColor': '#4a90e2'}}}%%
 graph TB
-    subgraph "Docker Compose Services"
-        PG[(PostgreSQL\n:5432)]:::db
-        MINIO[(MinIO\n:9900/:9901)]:::storage
-        CH[(ClickHouse\n:8123/:9000)]:::analytics
-        PGADMIN[(pgAdmin\n:8080)]:::admin
+    subgraph DOCKER["🐳 Docker Compose Services"]
+        direction LR
+        PG((
+        id:database-3,
+        title:PostgreSQL,
+        label: :5432,
+        bgcolor:#e3f2fd
+        )):::db
+        MINIO((
+        id:minio,
+        title:MinIO,
+        label: :9900/:9901,
+        bgcolor:#fff3e0
+        )):::storage
+        CH((
+        id:clickhouse,
+        title:ClickHouse,
+        label: :8123/:9000,
+        bgcolor:#f3e5f5
+        )):::analytics
+        ADMIN((
+        id:pgadmin,
+        title:pgAdmin,
+        label: :8080,
+        bgcolor:#e0f7fa
+        )):::admin
     end
     
-    classDef db fill:#f9f,stroke:#333
-    classDef storage fill:#ff9,stroke:#333
-    classDef analytics fill:#9f9,stroke:#333
-    classDef admin fill:#9ff,stroke:#333
+    PG --->|Read customers/claims| MINIO
+    MINIO --->|Read raw/silver| CH
+    
+    classDef db fill:#e3f2fd,stroke:#1976d2,stroke-width:3px,rx:10,ry:10
+    classDef storage fill:#fff3e0,stroke:#ff9800,stroke-width:3px,rx:10,ry:10
+    classDef analytics fill:#f3e5f5,stroke:#9c27b0,stroke-width:3px,rx:10,ry:10
+    classDef admin fill:#e0f7fa,stroke:#00acc1,stroke-width:3px,rx:10,ry:10
 ```
 
 | Service | Port | Purpose | Schema |
@@ -735,18 +801,28 @@ insurance-company-data-pipeline-example/
 This project follows the **test pyramid** methodology with four levels of testing:
 
 ```mermaid
-block-beta
-columns 13 
-
-space:4 L3["🔴 L3: End-to-End<br/>Full Pipeline"]:5 space:4
-space:3 L2["🟠 L2: Integration Services<br/>Real Services / Local Docker"]:7 space:3
-space:1 L1["🟡 L1: Unit with Mocks<br/>Mocked Dependencies / Partial Mocks"]:11 space:1
-L0["🟢 L0: Unit Isolation (Most Tests)<br/>Pure Functions / No I/O / No Dependencies"]:13
-
-style L3 fill:#ff5722,color:#fff,stroke:#333,stroke-width:2px
-style L2 fill:#ff9800,color:#fff,stroke:#333,stroke-width:2px
-style L1 fill:#ffc107,color:#000,stroke:#333,stroke-width:2px
-style L0 fill:#ffeb3b,color:#000,stroke:#333,stroke-width:2px
+%%{init: {'theme': 'base', 'themeVariables': { 'primaryColor': '#4a90e2'}}}%%
+graph TD
+    subgraph TEST["🧪 Test Pyramid"]
+        L0["🟢 L0: Unit Isolation<br/>25 tests"]
+        L1["🟡 L1: Unit + Mocks<br/>6 tests"]
+        L2["🟠 L2: Integration<br/>9 tests"]
+        L3["🔴 L3: E2E Full Pipeline<br/>14 tests"]
+    end
+    
+    L0 --- L1 --- L2 --- L3
+    
+    L3 ---|"Most Coverage"| L0
+    
+    classDef l0 fill:#c8e6c9,stroke:#2e7d32,stroke-width:3px
+    classDef l1 fill:#fff9c4,stroke:#f9a825,stroke-width:3px
+    classDef l2 fill:#ffe0b2,stroke:#ef6c00,stroke-width:3px
+    classDef l3 fill:#ffab91,stroke:#d84315,stroke-width:3px
+    
+    class L0:::l0
+    class L1:::l1
+    class L2:::l2
+    class L3:::l3
 ```
 
 ### 7.1. Test Levels Description
